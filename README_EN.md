@@ -17,7 +17,7 @@
 ClassCue records a class only after the user starts a session. The same microphone stream is written to a local WAV file and processed by an on-device speech recognizer. ClassCue watches the transcript for signs that the teacher may be calling on the user or asking a question, then raises a high-priority notification. If enabled, it can also send the relevant text to AI endpoints configured by the user and display the returned answers.
 
 > [!IMPORTANT]
-> This repository contains the `0.2.2p` public edition; `p` stands for public. It does not contain Huawei Wear Engine integration, a watch app, platform application records, or private signing material. The privately maintained `0.2.1` watch-enabled edition is not published in this repository.
+> This repository contains the `0.2.2p` public edition; `p` stands for public. It does not contain Huawei Wear Engine integration, a watch app, platform application records, or private signing material. The privately maintained `0.2.1` watch-enabled edition may open in the future.
 
 ## Why ClassCue exists
 
