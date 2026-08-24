@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">课醒</string>
+    <string name="listening_channel">课堂监听</string>
+    <string name="alerts_channel">课堂提醒</string>
+</resources>

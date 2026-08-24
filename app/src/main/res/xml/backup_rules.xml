@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="sharedpref" path="secret_store.xml" />
+    <exclude domain="file" path="recordings/" />
+    <exclude domain="file" path="offline_models/" />
+    <exclude domain="file" path="model_packages/" />
+    <exclude domain="external" path="recordings/" />
+</full-backup-content>

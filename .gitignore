@@ -1,0 +1,17 @@
+.gradle/
+.kotlin/
+.hvigor/
+.hvigor-user/
+.idea/
+build/
+app/build/
+local.properties
+keystore.properties
+*.iml
+captures/
+*.jks
+*.keystore
+*.p12
+*.p7b
+*.cer
+*.pem
