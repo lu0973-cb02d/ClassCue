@@ -17,7 +17,7 @@
 ClassCue records a class only after the user starts a session. The same microphone stream is written to a local WAV file and processed by an on-device speech recognizer. ClassCue watches the transcript for signs that the teacher may be calling on the user or asking a question, then raises a high-priority notification. If enabled, it can also send the relevant text to AI endpoints configured by the user and display the returned answers.
 
 > [!IMPORTANT]
-> This repository contains the `0.2.3p` public edition; `p` stands for public. It provides the complete Android phone source under the MIT License, plus an installable test APK on the Releases page.
+> This repository has iterated from `0.2.2p` to the `0.2.3p` public edition; `p` stands for public. This iteration adds an installable test APK and an automated release workflow while keeping the existing classroom recording, offline transcription, alerts, AI answers, history, and model-download features unchanged. The complete Android phone source remains available under the MIT License.
 
 ## Why ClassCue exists
 
