@@ -4,7 +4,7 @@
   <p>面向 Android 的课堂实时转写、点名提醒与 AI 回答助手</p>
 
   <p>
-    <img alt="Version 0.2.2p" src="https://img.shields.io/badge/version-0.2.2p-6750A4">
+    <img alt="Version 0.2.3p" src="https://img.shields.io/badge/version-0.2.3p-6750A4">
     <img alt="Android 13–16" src="https://img.shields.io/badge/Android-13--16-3DDC84?logo=android&logoColor=white">
     <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Java_17-7F52FF?logo=kotlin&logoColor=white">
     <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
@@ -17,7 +17,7 @@
 课醒会在你主动开始一节课后，把同一份麦克风音频同时用于本地 WAV 录音和离线语音识别。它持续分析课堂转写，在疑似点名、明确提问或自定义强提醒词出现时，通过高优先级通知提醒；你也可以把相关文字交给自己配置的 AI 模型生成参考答案。
 
 > [!IMPORTANT]
-> 当前仓库是 `0.2.2p` 公开版，`p` 表示 public。它不包含华为手表、Wear Engine、手表端工程、平台申请资料或私人签名材料。带华为手表连接能力的 `0.2.1` 是独立的版本，可能会在未来于本仓库发布。
+> 当前仓库是 `0.2.3p` 公开版，`p` 表示 public。仓库提供完整的 Android 手机端源码，并以 MIT License 开源；同时在 Releases 提供便于直接安装的测试 APK。
 
 ## 为什么做 ClassCue
 
@@ -104,7 +104,7 @@ $env:KEXING_MAVEN_PROXY = "https://maven.aliyun.com/repository"
 gradlew.bat testDebugUnitTest lintDebug assembleDebug
 ```
 
-当前版本为 `0.2.2p (10)`。Debug 应用 ID 是 `com.classcue.kexing.debug`，可与正式包名构建分开安装。仓库暂不提供由项目所有者签名的正式 APK。
+当前版本为 `0.2.3p (11)`。Debug 应用 ID 是 `com.classcue.kexing.debug`，可与正式包名构建分开安装。可安装的测试 APK 及 SHA-256 校验文件可从仓库的 [Releases](https://github.com/lu0973-cb02d/ClassCue/releases) 页面下载；该测试包使用 Android Debug 签名，不能覆盖安装由其他证书签名的版本。
 
 ## AI 服务配置
 
@@ -160,7 +160,7 @@ ClassCue/
 - 19 项 JVM 单元测试通过，0 失败。
 - Debug APK 完整编译和封装通过。
 - Android Lint 为 0 个错误、21 个警告。
-- 源码和合并 Manifest 不含华为 APP ID、Wear Engine SDK、运动健康包查询或手表端声明。
+- APK 由 GitHub Actions 自动构建，并随版本发布到 Releases。
 
 完整边界和已知警告见 [BUILD_STATUS.md](BUILD_STATUS.md)。发布者如需自己的签名 APK，请阅读 [FORMAL_SIGNING_REQUIRED.md](FORMAL_SIGNING_REQUIRED.md)。
 
@@ -180,7 +180,7 @@ ClassCue/
 ./gradlew testDebugUnitTest lintDebug assembleDebug
 ```
 
-请保持公开版不依赖华为 Wear Engine 或私人签名资料；不要提交密钥、证书、真实课堂录音、个人转写或模型服务凭据。
+请勿提交密钥、证书、未获授权的第三方平台资料、真实课堂录音、个人转写或模型服务凭据。
 
 ## 许可证与第三方组件
 

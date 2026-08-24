@@ -9,6 +9,7 @@ local.properties
 keystore.properties
 *.iml
 captures/
+dist/
 *.jks
 *.keystore
 *.p12

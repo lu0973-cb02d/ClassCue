@@ -4,7 +4,7 @@
   <p>Real-time classroom transcription, name-call alerts, and optional AI answers for Android</p>
 
   <p>
-    <img alt="Version 0.2.2p" src="https://img.shields.io/badge/version-0.2.2p-6750A4">
+    <img alt="Version 0.2.3p" src="https://img.shields.io/badge/version-0.2.3p-6750A4">
     <img alt="Android 13–16" src="https://img.shields.io/badge/Android-13--16-3DDC84?logo=android&logoColor=white">
     <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Java_17-7F52FF?logo=kotlin&logoColor=white">
     <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
@@ -17,7 +17,7 @@
 ClassCue records a class only after the user starts a session. The same microphone stream is written to a local WAV file and processed by an on-device speech recognizer. ClassCue watches the transcript for signs that the teacher may be calling on the user or asking a question, then raises a high-priority notification. If enabled, it can also send the relevant text to AI endpoints configured by the user and display the returned answers.
 
 > [!IMPORTANT]
-> This repository contains the `0.2.2p` public edition; `p` stands for public. It does not contain Huawei Wear Engine integration, a watch app, platform application records, or private signing material. The privately maintained `0.2.1` watch-enabled edition may open in the future.
+> This repository contains the `0.2.3p` public edition; `p` stands for public. It provides the complete Android phone source under the MIT License, plus an installable test APK on the Releases page.
 
 ## Why ClassCue exists
 
@@ -104,7 +104,7 @@ $env:KEXING_MAVEN_PROXY = "https://maven.aliyun.com/repository"
 gradlew.bat testDebugUnitTest lintDebug assembleDebug
 ```
 
-The current version is `0.2.2p (10)`. The Debug application ID is `com.classcue.kexing.debug`, allowing it to be installed separately from builds that use the release application ID. This repository does not currently distribute an APK signed by the project owner.
+The current version is `0.2.3p (11)`. The Debug application ID is `com.classcue.kexing.debug`, allowing it to be installed separately from builds that use the release application ID. An installable test APK and its SHA-256 checksum are available from [Releases](https://github.com/lu0973-cb02d/ClassCue/releases). The test APK uses an Android Debug signature and cannot update a build signed with a different certificate.
 
 ## Configuring AI services
 
@@ -160,7 +160,7 @@ The current public snapshot has been verified with:
 - 19 passing JVM unit tests and no failures.
 - A successful complete Debug APK build.
 - Android Lint with no errors and 21 warnings.
-- Source and merged-manifest checks showing no Huawei APP ID, Wear Engine SDK, Huawei Health package query, or watch-side declaration.
+- GitHub Actions builds the APK and attaches it to the corresponding Release.
 
 See [BUILD_STATUS.md](BUILD_STATUS.md) for the complete scope and known warnings. Publishers who need a signed APK should read [FORMAL_SIGNING_REQUIRED.md](FORMAL_SIGNING_REQUIRED.md).
 
@@ -180,7 +180,7 @@ Bug reports, feature proposals, and pull requests are welcome. Before submitting
 ./gradlew testDebugUnitTest lintDebug assembleDebug
 ```
 
-Keep the public edition independent of Huawei Wear Engine and private signing material. Do not commit keys, certificates, real classroom recordings, personal transcripts, or model-service credentials.
+Do not commit keys, certificates, unauthorized third-party platform materials, real classroom recordings, personal transcripts, or model-service credentials.
 
 ## License and third-party software
 
