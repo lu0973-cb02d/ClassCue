@@ -38,8 +38,8 @@ android {
         // The current APK is optimized for modern arm64 Android devices.
         minSdk = 33
         targetSdk = 36
-        versionCode = 11
-        versionName = "0.2.3p"
+        versionCode = 12
+        versionName = "0.2.4p"
         ndk { abiFilters += "arm64-v8a" }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

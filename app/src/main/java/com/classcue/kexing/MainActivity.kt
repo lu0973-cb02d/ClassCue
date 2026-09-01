@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -16,14 +17,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.core.content.FileProvider
+import androidx.lifecycle.lifecycleScope
+import com.classcue.kexing.data.MarkdownExporter
 import com.classcue.kexing.engine.ClassCueRuntime
 import com.classcue.kexing.engine.ListenService
 import com.classcue.kexing.engine.ModelDownloadService
 import com.classcue.kexing.engine.OfflineModelPack
 import com.classcue.kexing.model.TranscriptionModelSize
+import com.classcue.kexing.model.ArchiveFilter
+import com.classcue.kexing.model.HistoryArchiveSnapshot
+import com.classcue.kexing.model.LessonSummary
 import com.classcue.kexing.ui.ClassCueRoot
 import com.classcue.kexing.ui.ClassCueTheme
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private enum class PendingAction { NONE, START, TEST }
@@ -57,6 +66,7 @@ class MainActivity : ComponentActivity() {
             val appSettings by ClassCueApplication.settingsStore.settings.collectAsState()
             val events by ClassCueApplication.historyStore.events.collectAsState()
             val transcripts by ClassCueApplication.historyStore.transcripts.collectAsState()
+            val lessonSummaries by ClassCueApplication.historyStore.lessonSummaries.collectAsState()
             val recordings by ClassCueApplication.recordingRepository.recordings.collectAsState()
             val modelStates by ClassCueApplication.modelRepository.states.collectAsState()
             ClassCueTheme {
@@ -65,6 +75,7 @@ class MainActivity : ComponentActivity() {
                     settings = appSettings,
                     events = events,
                     transcripts = transcripts,
+                    lessonSummaries = lessonSummaries,
                     recordings = recordings,
                     modelStates = modelStates,
                     apiKeys = apiKeysState.value,
@@ -92,6 +103,13 @@ class MainActivity : ComponentActivity() {
                     onDeleteModel = { deleteModel(it) },
                     onPlayRecording = { openRecording(it) },
                     onShareRecording = { shareRecording(it) },
+                    onDeleteRecording = { deleteRecording(it) },
+                    onExportAllMarkdown = { exportMarkdown(ArchiveFilter()) },
+                    onExportCourseMarkdown = { courseName ->
+                        exportMarkdown(ArchiveFilter(courseName = courseName.trim()))
+                    },
+                    onExportLessonMarkdown = { lesson -> exportLessonMarkdown(lesson) },
+                    onDeleteLesson = { lesson -> deleteLesson(lesson) },
                     onOpenNotificationSettings = { openNotificationSettings() },
                     onOpenLiveUpdateSettings = { openLiveUpdateSettings() },
                     onOpenBatterySettings = { openBatterySettings() }
@@ -222,6 +240,60 @@ class MainActivity : ComponentActivity() {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         startActivity(Intent.createChooser(intent, "导出课堂录音"))
+    }
+
+    private fun deleteRecording(file: File) {
+        val deleted = ClassCueApplication.recordingRepository.delete(file)
+        Toast.makeText(this, if (deleted) "录音已删除" else "录音删除失败", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun exportLessonMarkdown(lesson: LessonSummary) {
+        exportMarkdown { ClassCueApplication.historyStore.archiveSnapshot(lesson) }
+    }
+
+    private fun exportMarkdown(filter: ArchiveFilter) {
+        exportMarkdown { ClassCueApplication.historyStore.archiveSnapshot(filter) }
+    }
+
+    private fun exportMarkdown(snapshotProvider: () -> HistoryArchiveSnapshot) {
+        lifecycleScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val snapshot = snapshotProvider()
+                    check(!snapshot.isEmpty) { "当前范围内没有可导出的课堂文字" }
+                    val directory = File(cacheDir, "exports").apply { mkdirs() }
+                    val file = File(directory, MarkdownExporter.suggestedFileName(snapshot))
+                    file.writeText(MarkdownExporter.export(snapshot), Charsets.UTF_8)
+                    file
+                }
+            }.onSuccess { file ->
+                val uri = FileProvider.getUriForFile(this@MainActivity, "$packageName.files", file)
+                startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                    type = "text/markdown"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }, "导出课堂 Markdown"))
+            }.onFailure { error ->
+                Toast.makeText(
+                    this@MainActivity,
+                    error.message ?: "Markdown 导出失败",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    private fun deleteLesson(lesson: LessonSummary) {
+        lifecycleScope.launch {
+            val removed = withContext(Dispatchers.IO) {
+                ClassCueApplication.historyStore.deleteLesson(lesson)
+            }
+            Toast.makeText(
+                this@MainActivity,
+                if (removed > 0) "本节课文字记录已删除" else "没有找到可删除的文字记录",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
     }
 
     private fun openNotificationSettings() {

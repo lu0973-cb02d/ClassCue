@@ -2,4 +2,5 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <external-files-path name="recordings_external" path="recordings/" />
     <files-path name="recordings_internal" path="recordings/" />
+    <cache-path name="markdown_exports" path="exports/" />
 </paths>

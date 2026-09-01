@@ -45,15 +45,15 @@ jobs:
       - name: Prepare distributable files
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/ClassCue-0.2.3p-debug-arm64-v8a.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/ClassCue-0.2.4p-debug-arm64-v8a.apk
           printf '%s\n' "$GITHUB_SHA" > dist/SOURCE_COMMIT.txt
           cd dist
-          sha256sum ClassCue-0.2.3p-debug-arm64-v8a.apk > SHA256SUMS.txt
+          sha256sum ClassCue-0.2.4p-debug-arm64-v8a.apk > SHA256SUMS.txt
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ClassCue-0.2.3p-debug-arm64-v8a
+          name: ClassCue-0.2.4p-debug-arm64-v8a
           path: dist/*
           if-no-files-found: error
 
@@ -61,16 +61,16 @@ jobs:
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: v0.2.3p
+          RELEASE_TAG: v0.2.4p
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists; leaving its signed artifact unchanged."
           else
             gh release create "$RELEASE_TAG" \
               --target "$GITHUB_SHA" \
-              --title "ClassCue 0.2.3p" \
-              --notes $'## 本次更新\n\n- 版本由 `0.2.2p` 迭代至 `0.2.3p`。\n- 新增可直接下载安装的 Android APK。\n- 新增 GitHub Actions 自动测试、Lint、APK 构建与 Release 发布。\n- 新增 APK 的 SHA-256 校验文件和对应源码提交记录。\n\n## 当前功能\n\n- 课堂音频本地录制与离线实时转写。\n- 点名、提问表达及自定义强提醒词识别。\n- 高优先级通知、震动强度调节与课堂上下文捕获。\n- 多个兼容 OpenAI Chat Completions 的 AI 服务并行回答。\n- 录音、转写、提醒与 AI 回答本地历史记录。\n- 离线语音模型下载、暂停、断点续传及失败重试。' \
-              dist/ClassCue-0.2.3p-debug-arm64-v8a.apk \
+              --title "ClassCue 0.2.4p" \
+              --notes $'## 本次更新\n\n- 新增面向远距离课堂声音的离线自适应增益与软限幅。\n- 新增系统自动、手机内置和外置麦克风输入策略。\n- 课堂文字和 WAV 录音改为长期本机保留、手动删除。\n- 新增按单节课、当前课程或全部课程导出 Markdown。\n- 新增按课程和课次整理的本地归档。\n\n## 说明\n\n- 远场增强只作用于离线识别输入，原始 WAV 保持不变。\n- 原始录音不会上传给 AI 服务；AI 仍只接收用户配置服务所需的文字上下文。\n- 远距离、回声和多人重叠说话仍会影响识别，软件增强不能恢复麦克风未采集到的语音。' \
+              dist/ClassCue-0.2.4p-debug-arm64-v8a.apk \
               dist/SHA256SUMS.txt \
               dist/SOURCE_COMMIT.txt
           fi

@@ -13,5 +13,6 @@ data class HistoryEvent(
     val reason: String,
     val answer: String? = null,
     val recordingName: String? = null,
-    val recordingOffsetMs: Long? = null
+    val recordingOffsetMs: Long? = null,
+    val courseName: String = ""
 )

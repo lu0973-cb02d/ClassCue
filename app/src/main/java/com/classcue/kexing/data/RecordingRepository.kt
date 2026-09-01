@@ -10,9 +10,8 @@ import java.util.concurrent.TimeUnit
 
 class RecordingRepository(private val context: Context) {
     companion object {
-        const val RETENTION_DAYS = 3L
-        val RETENTION_MS: Long = TimeUnit.DAYS.toMillis(RETENTION_DAYS)
         private const val WAV_BYTES_PER_SECOND = 16_000L * 2L
+        private val STALE_PARTIAL_MS = TimeUnit.HOURS.toMillis(2)
     }
 
     private val _recordings = MutableStateFlow<List<RecordingInfo>>(emptyList())
@@ -36,11 +35,17 @@ class RecordingRepository(private val context: Context) {
 
     @Synchronized
     fun cleanupExpired(now: Long = System.currentTimeMillis()): Int {
-        val cutoff = now - RETENTION_MS
+        return cleanupStalePartials(now)
+    }
+
+    /** Completed recordings are permanent; only abandoned temporary files are cleaned automatically. */
+    @Synchronized
+    fun cleanupStalePartials(now: Long = System.currentTimeMillis()): Int {
         var removed = 0
         directory.listFiles()?.forEach { file ->
-            val isIncompleteStale = file.extension == "partial" && file.lastModified() < now - TimeUnit.HOURS.toMillis(2)
-            if ((file.extension == "wav" && file.lastModified() < cutoff) || isIncompleteStale) {
+            val isIncompleteStale = file.extension.equals("partial", ignoreCase = true) &&
+                file.lastModified() < now - STALE_PARTIAL_MS
+            if (isIncompleteStale) {
                 if (file.delete()) removed++
             }
         }
@@ -62,13 +67,27 @@ class RecordingRepository(private val context: Context) {
                     file = file,
                     startedAt = startedAt,
                     bytes = file.length(),
-                    estimatedDurationMs = audioBytes * 1000L / WAV_BYTES_PER_SECOND,
-                    expiresAt = file.lastModified() + RETENTION_MS
+                    estimatedDurationMs = audioBytes * 1000L / WAV_BYTES_PER_SECOND
                 )
             }.orEmpty()
     }
 
     fun totalBytes(): Long = _recordings.value.sumOf { it.bytes }
+
+    @Synchronized
+    fun delete(file: File): Boolean {
+        val root = runCatching { directory.canonicalFile }.getOrNull() ?: return false
+        val candidate = runCatching { file.canonicalFile }.getOrNull() ?: return false
+        if (candidate.parentFile != root || !candidate.extension.equals("wav", ignoreCase = true)) return false
+        val removed = candidate.delete()
+        if (removed) refresh()
+        return removed
+    }
+
+    fun deleteByName(fileName: String): Boolean {
+        if (fileName != File(fileName).name) return false
+        return delete(File(directory, fileName))
+    }
 
     @Synchronized
     fun recoverInterruptedRecordings(now: Long = System.currentTimeMillis()): Int {

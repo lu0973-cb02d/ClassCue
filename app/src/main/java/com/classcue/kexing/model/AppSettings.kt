@@ -1,6 +1,7 @@
 package com.classcue.kexing.model
 
 import com.classcue.kexing.engine.ClassifierConfig
+import com.classcue.kexing.engine.AudioInputStrategy
 
 enum class DetectionMode { ALL, NAMED_ONLY, ROLL_CALL_ONLY }
 enum class AiTier { FAST, STRONG }
@@ -26,6 +27,7 @@ data class AiProfile(
 }
 
 data class AppSettings(
+    val courseName: String = "",
     val displayName: String = "",
     val studentId: String = "",
     val aliases: List<String> = emptyList(),
@@ -34,6 +36,8 @@ data class AppSettings(
     val detectionMode: DetectionMode = DetectionMode.ALL,
     val preferOnDevice: Boolean = true,
     val transcriptionModelSize: TranscriptionModelSize = TranscriptionModelSize.MEDIUM,
+    val audioInputStrategy: AudioInputStrategy = AudioInputStrategy.AUTO,
+    val farFieldEnhancementEnabled: Boolean = true,
     val phoneVibrationEnabled: Boolean = true,
     val vibrationStrength: Int = 3,
     val autoAnswer: Boolean = true,

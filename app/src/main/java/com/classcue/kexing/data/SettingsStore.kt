@@ -6,6 +6,7 @@ import com.classcue.kexing.model.AiProfile
 import com.classcue.kexing.model.AiTier
 import com.classcue.kexing.model.DetectionMode
 import com.classcue.kexing.model.TranscriptionModelSize
+import com.classcue.kexing.engine.AudioInputStrategy
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
@@ -23,6 +24,7 @@ class SettingsStore(context: Context) {
     }
 
     private fun read(): AppSettings = AppSettings(
+        courseName = prefs.getString("course_name", "").orEmpty(),
         displayName = prefs.getString("display_name", "").orEmpty(),
         studentId = prefs.getString("student_id", "").orEmpty(),
         aliases = parseList(prefs.getString("aliases", null)),
@@ -37,6 +39,12 @@ class SettingsStore(context: Context) {
                 prefs.getString("transcription_model_size", TranscriptionModelSize.MEDIUM.name).orEmpty()
             )
         }.getOrDefault(TranscriptionModelSize.MEDIUM),
+        audioInputStrategy = runCatching {
+            AudioInputStrategy.valueOf(
+                prefs.getString("audio_input_strategy", AudioInputStrategy.AUTO.name).orEmpty()
+            )
+        }.getOrDefault(AudioInputStrategy.AUTO),
+        farFieldEnhancementEnabled = prefs.getBoolean("far_field_enhancement_enabled", true),
         phoneVibrationEnabled = readPhoneVibrationEnabled(),
         vibrationStrength = prefs.getInt("vibration_strength", 3).coerceIn(1, 5),
         autoAnswer = prefs.getBoolean("auto_answer", true),
@@ -57,6 +65,7 @@ class SettingsStore(context: Context) {
 
     private fun write(value: AppSettings) {
         prefs.edit()
+            .putString("course_name", value.courseName)
             .putString("display_name", value.displayName)
             .putString("student_id", value.studentId)
             .putString("aliases", JSONArray(value.aliases).toString())
@@ -66,6 +75,8 @@ class SettingsStore(context: Context) {
             .putString("detection_mode", value.detectionMode.name)
             .putBoolean("prefer_on_device", value.preferOnDevice)
             .putString("transcription_model_size", value.transcriptionModelSize.name)
+            .putString("audio_input_strategy", value.audioInputStrategy.name)
+            .putBoolean("far_field_enhancement_enabled", value.farFieldEnhancementEnabled)
             .putBoolean("phone_vibration_enabled", value.phoneVibrationEnabled)
             .putInt("vibration_strength", value.vibrationStrength)
             .putBoolean("auto_answer", value.autoAnswer)

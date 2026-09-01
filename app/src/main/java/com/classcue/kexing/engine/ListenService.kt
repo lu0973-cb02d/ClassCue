@@ -41,7 +41,9 @@ class ListenService : Service() {
     private var recordingEngine: PcmRecordingEngine? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var sessionStartedAt = 0L
+    private var sessionCourseName = ""
     @Volatile private var lastLevelUpdateAt = 0L
+    @Volatile private var lastDiagnosticsUpdateAt = 0L
     private var lastAlertAt = 0L
     private var lastAlertKey = ""
     private var lastProvisionalAt = 0L
@@ -83,6 +85,7 @@ class ListenService : Service() {
         lastProvisionalAt = 0L
         lastProvisionalKey = ""
         lastLevelUpdateAt = 0L
+        lastDiagnosticsUpdateAt = 0L
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             running.set(false)
             ClassCueRuntime.update { it.copy(phase = SessionPhase.ERROR, statusText = "没有麦克风权限") }
@@ -91,6 +94,7 @@ class ListenService : Service() {
         }
         startForeground(NOTIFICATION_LISTENING, listeningNotification("正在启动录音和识别…"))
         sessionStartedAt = System.currentTimeMillis()
+        sessionCourseName = ClassCueApplication.settingsStore.settings.value.courseName.trim()
         getSharedPreferences("service_state", MODE_PRIVATE).edit().putBoolean("active", true).apply()
         ClassCueRuntime.update {
             SessionState(
@@ -164,6 +168,8 @@ class ListenService : Service() {
         recordingEngine = PcmRecordingEngine(
             context = applicationContext,
             repository = ClassCueApplication.recordingRepository,
+            inputStrategy = ClassCueApplication.settingsStore.settings.value.audioInputStrategy,
+            farFieldEnhancementEnabled = ClassCueApplication.settingsStore.settings.value.farFieldEnhancementEnabled,
             onBytesWritten = { bytes ->
                 if (bytes % 64_000L < 8_192L) {
                     ClassCueRuntime.update { it.copy(recordingBytes = bytes) }
@@ -175,6 +181,19 @@ class ListenService : Service() {
                 if (now - lastLevelUpdateAt >= 250L) {
                     lastLevelUpdateAt = now
                     ClassCueRuntime.update { it.copy(inputLevel = level) }
+                }
+            },
+            onAudioDiagnostics = { diagnostics ->
+                val now = System.currentTimeMillis()
+                if (now - lastDiagnosticsUpdateAt >= 500L) {
+                    lastDiagnosticsUpdateAt = now
+                    ClassCueRuntime.update {
+                        it.copy(
+                            enhancedInputLevel = diagnostics.enhancedLevelPercent,
+                            inputRmsDbfs = diagnostics.rawRmsDbfs,
+                            appliedInputGainDb = diagnostics.appliedGainDb
+                        )
+                    }
                 }
             },
             onInputRoute = { route ->
@@ -244,7 +263,8 @@ class ListenService : Service() {
                 TranscriptRecord(
                     createdAt = timestamp,
                     text = text,
-                    recordingName = recordingEngine?.recordingFileName
+                    recordingName = recordingEngine?.recordingFileName,
+                    courseName = sessionCourseName
                 )
             )
             val cutoff = timestamp - ClassCueApplication.settingsStore.settings.value.contextBeforeSeconds * 1_000L
@@ -339,7 +359,8 @@ class ListenService : Service() {
                 confidence = result.confidence,
                 reason = result.reason,
                 recordingName = recording,
-                recordingOffsetMs = (now - sessionStartedAt).coerceAtLeast(0L)
+                recordingOffsetMs = (now - sessionStartedAt).coerceAtLeast(0L),
+                courseName = sessionCourseName
             )
         )
         latestCueEventId = eventId
@@ -583,7 +604,7 @@ class ListenService : Service() {
             .setSmallIcon(R.drawable.ic_stat_alert)
             .setContentTitle("课醒正在听课")
             .setContentText(status)
-            .setStyle(NotificationCompat.BigTextStyle().bigText("$status\n原始录音仅保留最近 3 天"))
+            .setStyle(NotificationCompat.BigTextStyle().bigText("$status\n录音与课堂文字长期保存在本机，可在历史记录中手动管理"))
             .setContentIntent(openAppIntent(600))
             .addAction(0, "结束并保存", stopIntent)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)

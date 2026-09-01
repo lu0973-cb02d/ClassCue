@@ -17,6 +17,9 @@ data class SessionState(
     val recordingName: String? = null,
     val recordingBytes: Long = 0L,
     val inputLevel: Int = 0,
+    val enhancedInputLevel: Int = 0,
+    val inputRmsDbfs: Double = -120.0,
+    val appliedInputGainDb: Double = 0.0,
     val recognizerMode: String = "离线中文识别 · 荣耀兼容"
 )
 
