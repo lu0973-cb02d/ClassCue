@@ -4,7 +4,7 @@
   <p>Real-time classroom transcription, name-call alerts, and optional AI answers for Android</p>
 
   <p>
-    <img alt="Version 0.2.4p" src="https://img.shields.io/badge/version-0.2.4p-6750A4">
+    <img alt="Version 0.2.4f" src="https://img.shields.io/badge/version-0.2.4f-6750A4">
     <img alt="Android 13–16" src="https://img.shields.io/badge/Android-13--16-3DDC84?logo=android&logoColor=white">
     <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Java_17-7F52FF?logo=kotlin&logoColor=white">
     <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
@@ -17,7 +17,7 @@
 ClassCue records a class only after the user starts a session. The same microphone stream is written to a local WAV file and processed by an on-device speech recognizer. ClassCue watches the transcript for signs that the teacher may be calling on the user or asking a question, then raises a high-priority notification. If enabled, it can also send the relevant text to AI endpoints configured by the user and display the returned answers.
 
 > [!IMPORTANT]
-> The current repository version is `0.2.4p`, where `p` stands for public. This update improves the offline recognition input for distant classroom speech and adds microphone routing, long-term lesson archives, manual deletion, and Markdown export for one lesson, one course, or all courses. The complete Android phone source remains available under the MIT License.
+> The current repository version is `0.2.4f`. This hotfix resolves the startup crash in `0.2.4p`, caused by malformed SQL while loading lesson archives, and retains far-field offline recognition enhancement, microphone routing, long-term archives, manual deletion, and Markdown export. Do not continue using the `0.2.4p` APK.
 
 ## Why ClassCue exists
 
@@ -107,7 +107,7 @@ $env:KEXING_MAVEN_PROXY = "https://maven.aliyun.com/repository"
 gradlew.bat testDebugUnitTest lintDebug assembleDebug
 ```
 
-The current version is `0.2.4p (12)`. The Debug application ID is `com.classcue.kexing.debug`, allowing it to be installed separately from builds that use the release application ID. An installable test APK and its SHA-256 checksum are available from [Releases](https://github.com/lu0973-cb02d/ClassCue/releases). The test APK uses an Android Debug signature and cannot update a build signed with a different certificate.
+The current version is `0.2.4f (13)`. The Debug version name is `0.2.4f-debug`, and its application ID is `com.classcue.kexing.debug`, allowing it to be installed separately from builds that use the release application ID. An installable test APK and its SHA-256 checksum are available from [Releases](https://github.com/lu0973-cb02d/ClassCue/releases). The test APK uses an Android Debug signature and cannot update a build signed with a different certificate.
 
 ## Configuring AI services
 
@@ -161,7 +161,7 @@ ClassCue/
 
 The current public snapshot has been verified with:
 
-- 29 passing JVM unit tests and no failures.
+- 31 passing JVM unit tests and no failures.
 - A successful complete Debug APK build.
 - Android Lint with no errors, 24 warnings, and 1 hint.
 - GitHub Actions builds the APK and attaches it to the corresponding Release.

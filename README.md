@@ -4,7 +4,7 @@
   <p>面向 Android 的课堂实时转写、点名提醒与 AI 回答助手</p>
 
   <p>
-    <img alt="Version 0.2.4p" src="https://img.shields.io/badge/version-0.2.4p-6750A4">
+    <img alt="Version 0.2.4f" src="https://img.shields.io/badge/version-0.2.4f-6750A4">
     <img alt="Android 13–16" src="https://img.shields.io/badge/Android-13--16-3DDC84?logo=android&logoColor=white">
     <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Java_17-7F52FF?logo=kotlin&logoColor=white">
     <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
@@ -17,7 +17,7 @@
 课醒会在你主动开始一节课后，把同一份麦克风音频同时用于本地 WAV 录音和离线语音识别。它持续分析课堂转写，在疑似点名、明确提问或自定义强提醒词出现时，通过高优先级通知提醒；你也可以把相关文字交给自己配置的 AI 模型生成参考答案。
 
 > [!IMPORTANT]
-> 当前仓库版本为 `0.2.4p`，`p` 表示 public。本次更新加强远距离课堂声音的离线识别输入，新增麦克风选择、长期课次归档、手动删除以及单课次/课程/全部课程 Markdown 导出。Android 手机端源码继续以 MIT License 完整开源。
+> 当前仓库版本为 `0.2.4f`。此修复版解决 `0.2.4p` 启动时读取课次归档 SQL 拼接错误导致的闪退，并保留远场离线识别增强、麦克风选择、长期归档、手动删除和 Markdown 导出。请勿继续使用 `0.2.4p` APK。
 
 ## 为什么做 ClassCue
 
@@ -107,7 +107,7 @@ $env:KEXING_MAVEN_PROXY = "https://maven.aliyun.com/repository"
 gradlew.bat testDebugUnitTest lintDebug assembleDebug
 ```
 
-当前版本为 `0.2.4p (12)`。Debug 应用 ID 是 `com.classcue.kexing.debug`，可与正式包名构建分开安装。可安装的测试 APK 及 SHA-256 校验文件可从仓库的 [Releases](https://github.com/lu0973-cb02d/ClassCue/releases) 页面下载；该测试包使用 Android Debug 签名，不能覆盖安装由其他证书签名的版本。
+当前版本为 `0.2.4f (13)`。Debug 版本名是 `0.2.4f-debug`，应用 ID 是 `com.classcue.kexing.debug`，可与正式包名构建分开安装。可安装的测试 APK 及 SHA-256 校验文件可从仓库的 [Releases](https://github.com/lu0973-cb02d/ClassCue/releases) 页面下载；该测试包使用 Android Debug 签名，不能覆盖安装由其他证书签名的版本。
 
 ## AI 服务配置
 
@@ -161,7 +161,7 @@ ClassCue/
 
 当前公开快照已验证：
 
-- 29 项 JVM 单元测试通过，0 失败。
+- 31 项 JVM 单元测试通过，0 失败。
 - Debug APK 完整编译和封装通过。
 - Android Lint 为 0 个错误、24 个警告和 1 个提示。
 - APK 由 GitHub Actions 自动构建，并随版本发布到 Releases。

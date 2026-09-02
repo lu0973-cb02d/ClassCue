@@ -16,13 +16,41 @@ import com.classcue.kexing.model.TranscriptRecord
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
+internal const val LEGACY_DAY_MS = 86_400_000L
+
+internal fun buildLessonSummarySql(
+    whereSelection: String?,
+    limit: Int?,
+    offset: Int
+): String = buildString {
+    append(
+        """SELECT course_name, recording_name,
+            MIN(created_at) AS started_at, MAX(created_at) AS ended_at,
+            SUM(transcript_count) AS transcript_count, SUM(event_count) AS event_count
+            FROM (
+                SELECT course_name, recording_name, created_at, 1 AS transcript_count, 0 AS event_count FROM transcripts
+                UNION ALL
+                SELECT course_name, recording_name, created_at, 0 AS transcript_count, 1 AS event_count FROM events
+            ) archive_rows""".trimIndent()
+    )
+    if (whereSelection != null) append(" WHERE $whereSelection")
+    appendLine()
+    append(
+        """GROUP BY course_name,
+            CASE WHEN recording_name IS NULL OR TRIM(recording_name) = ''
+            THEN '__legacy_day_' || CAST(created_at / $LEGACY_DAY_MS AS INTEGER)
+            ELSE recording_name END
+            ORDER BY started_at DESC""".trimIndent()
+    )
+    if (limit != null) append(" LIMIT $limit OFFSET $offset")
+}
+
 class HistoryStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
     companion object {
         private const val DATABASE_NAME = "classcue_history.db"
         private const val DATABASE_VERSION = 3
         private const val EVENT_PREVIEW_LIMIT = "300"
         private const val TRANSCRIPT_PREVIEW_LIMIT = "2000"
-        private const val LEGACY_DAY_MS = 86_400_000L
     }
 
     private val _events = MutableStateFlow<List<HistoryEvent>>(emptyList())
@@ -312,27 +340,7 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, 
         offset: Int
     ): List<LessonSummary> {
         val where = archiveWhere(filter)
-        val sql = buildString {
-            append(
-                """SELECT course_name, recording_name,
-                    MIN(created_at) AS started_at, MAX(created_at) AS ended_at,
-                    SUM(transcript_count) AS transcript_count, SUM(event_count) AS event_count
-                    FROM (
-                        SELECT course_name, recording_name, created_at, 1 AS transcript_count, 0 AS event_count FROM transcripts
-                        UNION ALL
-                        SELECT course_name, recording_name, created_at, 0 AS transcript_count, 1 AS event_count FROM events
-                    ) archive_rows""".trimIndent()
-            )
-            if (where.selection != null) append(" WHERE ${where.selection}")
-            append(
-                """ GROUP BY course_name,
-                    CASE WHEN recording_name IS NULL OR TRIM(recording_name) = ''
-                    THEN '__legacy_day_' || CAST(created_at / $LEGACY_DAY_MS AS INTEGER)
-                    ELSE recording_name END
-                    ORDER BY started_at DESC""".trimIndent()
-            )
-            if (limit != null) append(" LIMIT $limit OFFSET $offset")
-        }
+        val sql = buildLessonSummarySql(where.selection, limit, offset)
         val result = mutableListOf<LessonSummary>()
         readableDatabase.rawQuery(sql, where.args).use { cursor ->
             val courseName = cursor.getColumnIndexOrThrow("course_name")
