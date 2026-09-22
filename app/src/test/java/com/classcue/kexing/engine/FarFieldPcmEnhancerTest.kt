@@ -53,7 +53,7 @@ class FarFieldPcmEnhancerTest {
     }
 
     @Test
-    fun silenceAndOddTrailingByteAreHandledWithoutAFilterGate() {
+    fun sustainedSilenceIsGatedAndOddTrailingByteIsPreserved() {
         val input = ByteArray(17)
         input[input.lastIndex] = 0x5a
 
@@ -62,7 +62,22 @@ class FarFieldPcmEnhancerTest {
         assertEquals(input.size, result.pcm.size)
         assertEquals(0x5a.toByte(), result.pcm.last())
         assertEquals(0, result.diagnostics.rawLevelPercent)
+        assertTrue(!result.diagnostics.speechLikely)
+        assertTrue(readSamples(result.pcm).all { it == 0 })
         assertEquals(0.0, result.diagnostics.clippedSampleRatio, 0.0)
+    }
+
+    @Test
+    fun shortPauseKeepsHangoverWhileLongQuietTailIsSuppressed() {
+        val samples = IntArray(320 * 16)
+        for (index in 0 until 320) samples[index] = 700
+        for (index in 320 until samples.size) samples[index] = 20
+        val result = FarFieldPcmEnhancer(enabled = true).process(pcm(samples))
+        val output = readSamples(result.pcm)
+
+        assertTrue(result.diagnostics.speechLikely)
+        assertTrue(output[320 * 4] != 0)
+        assertTrue(output[320 * 14] == 0)
     }
 
     @Test

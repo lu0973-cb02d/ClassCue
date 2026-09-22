@@ -46,8 +46,6 @@ class ListenService : Service() {
     @Volatile private var lastDiagnosticsUpdateAt = 0L
     private var lastAlertAt = 0L
     private var lastAlertKey = ""
-    private var lastProvisionalAt = 0L
-    private var lastProvisionalKey = ""
     private var identityArmedUntil = 0L
     @Volatile private var latestCueEventId = 0L
     private val aiAnswers = ConcurrentHashMap<Long, ConcurrentHashMap<String, ModelAnswer>>()
@@ -82,8 +80,6 @@ class ListenService : Service() {
         identityArmedUntil = 0L
         lastAlertAt = 0L
         lastAlertKey = ""
-        lastProvisionalAt = 0L
-        lastProvisionalKey = ""
         lastLevelUpdateAt = 0L
         lastDiagnosticsUpdateAt = 0L
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -278,38 +274,21 @@ class ListenService : Service() {
                 )
             }
         } else {
+            // Partial ASR is useful for the live transcript, but it is not stable enough
+            // for a notification: a single garbled syllable can temporarily resemble a
+            // name or a strong keyword in a noisy classroom.
             ClassCueRuntime.update { it.copy(partialText = text) }
+            return
         }
-        detectCue(text, isFinal)
+        detectCue(text)
     }
 
-    private fun detectCue(text: String, isFinal: Boolean) {
+    private fun detectCue(text: String) {
         val settings = ClassCueApplication.settingsStore.settings.value
         val now = System.currentTimeMillis()
         val identityMentioned = mentionsIdentity(text, settings)
         if (identityMentioned) {
             identityArmedUntil = now + settings.followupWindowSeconds * 1_000L
-        }
-        if (!isFinal) {
-            val customKeywordMentioned = CueClassifier.containsCustomKeyword(text, settings.customKeywords)
-            if (identityMentioned || customKeywordMentioned) {
-                val key = text.lowercase(Locale.ROOT).replace(Regex("[\\s，。！？、,.!?]"), "")
-                val provisional = if (identityMentioned) {
-                    CueResult(CueType.ROLL_CALL, RiskLevel.HIGH, 0.88, "临时转写中检测到你的称呼")
-                } else {
-                    CueResult(CueType.GENERAL_QUESTION, RiskLevel.MEDIUM, 0.78, "临时转写中命中自定义强提醒词")
-                }
-                ClassCueRuntime.update { it.copy(lastCue = provisional) }
-                val sameGrowingUtterance = lastProvisionalKey.isNotEmpty() &&
-                    (key.contains(lastProvisionalKey) || lastProvisionalKey.contains(key))
-                if (now - lastProvisionalAt > 8_000L || !sameGrowingUtterance) {
-                    lastProvisionalAt = now
-                    lastProvisionalKey = key
-                    notifyProvisional(text, customKeywordMentioned && !identityMentioned)
-                    if (settings.phoneVibrationEnabled) vibrate(RiskLevel.HIGH, settings.vibrationStrength)
-                }
-            }
-            return
         }
         if (now < identityArmedUntil && looksLikeQuestion(text)) {
             identityArmedUntil = now + settings.followupWindowSeconds * 1_000L
@@ -365,9 +344,7 @@ class ListenService : Service() {
         )
         latestCueEventId = eventId
         notifyCue(eventId, result, contextWindow, answer = null, settings)
-        val followsProvisional = now - lastProvisionalAt < 7_000L &&
-            (key.contains(lastProvisionalKey) || lastProvisionalKey.contains(key))
-        if (settings.phoneVibrationEnabled && !followsProvisional) {
+        if (settings.phoneVibrationEnabled) {
             vibrate(result.risk, settings.vibrationStrength)
         }
 
@@ -559,30 +536,6 @@ class ListenService : Service() {
                 }
             )
         }
-    }
-
-    private fun notifyProvisional(transcript: String, strongKeyword: Boolean) {
-        val settings = ClassCueApplication.settingsStore.settings.value
-        val title = if (strongKeyword) "检测到强提醒词" else "老师可能叫到你"
-        val waitingText = if (strongKeyword) "正在等待老师说完这句话…" else "正在等待老师说完问题…"
-        val notification = NotificationCompat.Builder(
-            this,
-            ClassCueApplication.alertChannelId(settings.phoneVibrationEnabled)
-        )
-            .setSmallIcon(R.drawable.ic_stat_alert)
-            .setContentTitle(title)
-            .setContentText(waitingText)
-            .setStyle(NotificationCompat.BigTextStyle().bigText("$transcript\n\n${waitingText}确认转写后再生成 AI 回答。"))
-            .setContentIntent(openAppIntent(NOTIFICATION_ACTIVE_CUE))
-            .setCategory(NotificationCompat.CATEGORY_REMINDER)
-            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setTicker(title)
-            .setAutoCancel(true)
-            .setOnlyAlertOnce(false)
-            .setTimeoutAfter(90_000)
-            .build()
-        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ACTIVE_CUE, notification)
     }
 
     private fun cueTitle(result: CueResult): String = when (result.type) {

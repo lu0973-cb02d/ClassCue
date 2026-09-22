@@ -200,7 +200,10 @@ class SherpaTranscriber(
             ),
             endpointConfig = EndpointConfig(
                 rule1 = EndpointRule(false, 2.0f, 0.0f),
-                rule2 = EndpointRule(true, 0.9f, 0.0f),
+                // A teacher's mid-sentence pause should not flush the stream too early.
+                // Final alerts are now gated on stable endpoint text, so the small latency
+                // increase is preferable to losing the next phrase after a pause.
+                rule2 = EndpointRule(true, 1.2f, 0.0f),
                 rule3 = EndpointRule(false, 0.0f, 18.0f)
             ),
             enableEndpoint = true

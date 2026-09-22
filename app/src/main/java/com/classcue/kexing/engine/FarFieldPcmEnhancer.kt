@@ -10,9 +10,10 @@ import kotlin.math.tanh
 /**
  * Conservative PCM16 gain control for quiet, distant speech.
  *
- * This processor deliberately has no noise gate: weak speech is never discarded. Gain rises
- * slowly, falls quickly when a loud sound arrives, and a soft limiter prevents hard clipping.
- * It is stateful so consecutive capture buffers do not jump abruptly in volume.
+ * Gain rises slowly, falls quickly when a loud sound arrives, and a soft limiter prevents hard
+ * clipping. A deliberately conservative frame-level energy gate removes only sustained
+ * near-silence from the recognizer input. A short hangover keeps pauses inside one sentence,
+ * while the lossless WAV continues to receive the original microphone bytes.
  */
 class FarFieldPcmEnhancer(
     private val enabled: Boolean = true,
@@ -20,12 +21,18 @@ class FarFieldPcmEnhancer(
     private val maximumGainDb: Double = 12.0,
     private val gainRisePerBufferDb: Double = 1.5,
     private val gainFallPerBufferDb: Double = 4.0,
-    private val limiterThreshold: Double = 0.86
+    private val limiterThreshold: Double = 0.86,
+    private val noiseGateEnabled: Boolean = true,
+    private val noiseGateThresholdDbfs: Double = -56.0,
+    private val speechHangoverFrames: Int = 12,
+    private val frameSamples: Int = 320
 ) {
     private var currentGainDb = 0.0
+    private var remainingHangoverFrames = 0
 
     fun reset() {
         currentGainDb = 0.0
+        remainingHangoverFrames = 0
     }
 
     fun process(input: ByteArray, count: Int = input.size): Result {
@@ -39,7 +46,8 @@ class FarFieldPcmEnhancer(
                     enhancedRmsDbfs = SILENCE_DBFS,
                     appliedGainDb = 0.0,
                     limiterReductionDb = 0.0,
-                    limitedRatio = 0.0
+                    limitedRatio = 0.0,
+                    speechLikely = false
                 )
             )
         }
@@ -64,12 +72,38 @@ class FarFieldPcmEnhancer(
                     enhancedRmsDbfs = rawRmsDbfs,
                     appliedGainDb = 0.0,
                     limiterReductionDb = 0.0,
-                    limitedRatio = 0.0
+                    limitedRatio = 0.0,
+                    speechLikely = rawRmsDbfs > SILENCE_DBFS
                 )
             )
         }
 
-        val desiredGainDb = (targetRmsDbfs - rawRmsDbfs).coerceIn(0.0, maximumGainDb)
+        val frameSpeech = BooleanArray((sampleCount + frameSamples - 1) / frameSamples)
+        var frameIndex = 0
+        var hasSpeech = false
+        while (frameIndex < frameSpeech.size) {
+            val startSample = frameIndex * frameSamples
+            val endSample = minOf(sampleCount, startSample + frameSamples)
+            var frameSumSquares = 0.0
+            var sampleOffset = startSample * 2
+            while (sampleOffset < endSample * 2) {
+                val sample = readPcm16(input, sampleOffset)
+                frameSumSquares += sample.toDouble() * sample.toDouble()
+                sampleOffset += 2
+            }
+            val frameRms = sqrt(frameSumSquares / (endSample - startSample))
+            val frameDbfs = amplitudeToDbfs(frameRms)
+            val speech = !noiseGateEnabled || frameDbfs >= noiseGateThresholdDbfs
+            frameSpeech[frameIndex] = speech
+            hasSpeech = hasSpeech || speech
+            frameIndex++
+        }
+
+        val desiredGainDb = if (hasSpeech) {
+            (targetRmsDbfs - rawRmsDbfs).coerceIn(0.0, maximumGainDb)
+        } else {
+            0.0
+        }
         currentGainDb = when {
             desiredGainDb > currentGainDb -> minOf(desiredGainDb, currentGainDb + gainRisePerBufferDb)
             desiredGainDb < currentGainDb -> maxOf(desiredGainDb, currentGainDb - gainFallPerBufferDb)
@@ -83,13 +117,29 @@ class FarFieldPcmEnhancer(
         var outputPeak = 0.0
         var limitedSamples = 0
         index = 0
+        frameIndex = 0
+        var sampleInFrame = 0
+        var currentFrameKept = true
         while (index < evenCount) {
+            if (sampleInFrame == 0) {
+                val speech = frameSpeech[frameIndex]
+                val keepFrame = speech || remainingHangoverFrames > 0
+                if (noiseGateEnabled) {
+                    if (speech) {
+                        remainingHangoverFrames = speechHangoverFrames.coerceAtLeast(0)
+                    } else if (remainingHangoverFrames > 0) {
+                        remainingHangoverFrames--
+                    }
+                }
+                currentFrameKept = keepFrame || !noiseGateEnabled
+                frameIndex++
+            }
             val normalized = readPcm16(input, index) / PCM_FULL_SCALE
             val scaled = normalized * gain
             val magnitude = abs(scaled)
             scaledPeak = maxOf(scaledPeak, magnitude)
             if (magnitude > limiterThreshold) limitedSamples++
-            val limited = softLimit(scaled)
+            val limited = if (currentFrameKept) softLimit(scaled) else 0.0
             outputPeak = maxOf(outputPeak, abs(limited))
             val outputSample = (limited * Short.MAX_VALUE)
                 .roundToInt()
@@ -97,6 +147,8 @@ class FarFieldPcmEnhancer(
             writePcm16(output, index, outputSample)
             enhancedSumSquares += outputSample.toDouble() * outputSample.toDouble()
             index += 2
+            sampleInFrame++
+            if (sampleInFrame >= frameSamples || index >= evenCount) sampleInFrame = 0
         }
 
         val enhancedRms = sqrt(enhancedSumSquares / sampleCount)
@@ -112,7 +164,8 @@ class FarFieldPcmEnhancer(
                 enhancedRmsDbfs = amplitudeToDbfs(enhancedRms),
                 appliedGainDb = currentGainDb,
                 limiterReductionDb = limiterReductionDb,
-                limitedRatio = limitedSamples.toDouble() / sampleCount
+                limitedRatio = limitedSamples.toDouble() / sampleCount,
+                speechLikely = hasSpeech
             )
         )
     }
@@ -130,7 +183,8 @@ class FarFieldPcmEnhancer(
         enhancedRmsDbfs: Double,
         appliedGainDb: Double,
         limiterReductionDb: Double,
-        limitedRatio: Double
+        limitedRatio: Double,
+        speechLikely: Boolean
     ) = AudioInputDiagnostics(
         rawLevelPercent = dbfsToPercent(rawRmsDbfs),
         rawRmsDbfs = rawRmsDbfs,
@@ -138,7 +192,8 @@ class FarFieldPcmEnhancer(
         enhancedRmsDbfs = enhancedRmsDbfs,
         appliedGainDb = appliedGainDb,
         limiterReductionDb = limiterReductionDb,
-        clippedSampleRatio = limitedRatio.coerceIn(0.0, 1.0)
+        clippedSampleRatio = limitedRatio.coerceIn(0.0, 1.0),
+        speechLikely = speechLikely
     )
 
     data class Result(

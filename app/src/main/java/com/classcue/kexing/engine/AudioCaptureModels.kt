@@ -21,5 +21,7 @@ data class AudioInputDiagnostics(
     val appliedGainDb: Double,
     val limiterReductionDb: Double,
     /** Fraction of samples that entered the soft limiter knee, from 0.0 to 1.0. */
-    val clippedSampleRatio: Double
+    val clippedSampleRatio: Double,
+    /** Whether this buffer contains enough sustained energy to be treated as speech. */
+    val speechLikely: Boolean
 )

@@ -17,6 +17,7 @@ public final class CueClassifier {
 
         boolean callContext = containsAny(text, ClassroomCueLexicon.CALL_CUES);
         boolean questionContext = looksLikeQuestion(text);
+        boolean explicitQuestion = hasExplicitQuestionSignal(text);
         boolean customContext = containsAny(text, config.customKeywords);
         boolean exactName = tokenMatch(text, normalize(config.displayName), callContext || questionContext);
         boolean studentId = !config.studentId.isEmpty() && text.contains(normalize(config.studentId));
@@ -38,7 +39,7 @@ public final class CueClassifier {
         if (customContext) score += 0.12;
         if (customContext) score = Math.max(score, 0.78);
         if (personMatch && (callContext || questionContext)) score += 0.08;
-        if (!personMatch && questionContext) score = Math.max(score, 0.56);
+        if (!personMatch && questionContext) score = Math.max(score, explicitQuestion ? 0.72 : 0.56);
         if (!personMatch && callContext) score = Math.max(score, 0.38);
         score = Math.min(score, 0.99);
 
@@ -75,8 +76,24 @@ public final class CueClassifier {
     private static double thresholdFor(int sensitivity, CueType type) {
         double[] thresholds = {0.88, 0.79, 0.68, 0.58, 0.46};
         double base = thresholds[Math.max(1, Math.min(5, sensitivity)) - 1];
-        if (type == CueType.GENERAL_QUESTION) base = Math.min(base, 0.52);
+        // Generic lecture wording often contains a broad cue such as “什么” or “怎么”.
+        // Keep general-class alerts behind a higher floor; explicit question signals still
+        // receive the 0.72 score above, while weak ASR fragments remain below the floor.
+        if (type == CueType.GENERAL_QUESTION) base = Math.max(base, 0.68);
         return base;
+    }
+
+    private static boolean hasExplicitQuestionSignal(String text) {
+        if (text.contains("?") || text.contains("？")) return true;
+        String[] signals = {
+                "吗", "呢", "为什么", "怎么", "如何", "是否", "有没有", "能不能",
+                "可不可以", "请问", "谁", "哪位", "哪个", "哪一个", "请解释", "解释一下",
+                "请说明", "说明一下", "请比较", "比较一下", "举例说明", "请回答", "回答一下"
+        };
+        for (String signal : signals) {
+            if (text.contains(signal)) return true;
+        }
+        return false;
     }
 
     private static boolean tokenMatch(String text, String token, boolean contextual) {

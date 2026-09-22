@@ -62,7 +62,9 @@ class PcmRecordingEngine(
         val min = AudioRecord.getMinBufferSize(
             SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
         )
-        val bufferSize = maxOf(min, SAMPLE_RATE / 5 * 2) * 2
+        // Keep capture chunks near 200 ms on common devices. The previous ~400 ms chunks
+        // made a short pause look like an endpoint and delayed the next speech fragment.
+        val bufferSize = maxOf(min * 2, SAMPLE_RATE / 10 * 2)
         val record = AudioRecord.Builder()
             .setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
             .setPrivacySensitive(true)

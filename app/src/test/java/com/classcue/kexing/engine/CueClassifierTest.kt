@@ -90,6 +90,15 @@ class CueClassifierTest {
     }
 
     @Test
+    fun broadQuestionWordAloneDoesNotTurnLectureIntoAnAlert() {
+        val result = CueClassifier.classify(
+            "本节会说明什么是边际收益以及它和总收益的关系",
+            config(keywords = emptyList())
+        )
+        assertFalse(result.shouldAlert())
+    }
+
+    @Test
     fun expandedLexiconIsLargeAndSharedWithFollowupDetection() {
         assertTrue(CueClassifier.builtInCueCount() >= 180)
         assertTrue(CueClassifier.looksLikeQuestion("还有其他答案吗"))
