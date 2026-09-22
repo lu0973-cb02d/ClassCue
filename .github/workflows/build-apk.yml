@@ -47,15 +47,15 @@ jobs:
       - name: Prepare distributable files
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/ClassCue-0.2.5-debug-arm64-v8a.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/ClassCue-0.2.6-debug-arm64-v8a.apk
           printf '%s\n' "$GITHUB_SHA" > dist/SOURCE_COMMIT.txt
           cd dist
-          sha256sum ClassCue-0.2.5-debug-arm64-v8a.apk > SHA256SUMS.txt
+          sha256sum ClassCue-0.2.6-debug-arm64-v8a.apk > SHA256SUMS.txt
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ClassCue-0.2.5-debug-arm64-v8a
+          name: ClassCue-0.2.6-debug-arm64-v8a
           path: dist/*
           if-no-files-found: error
 
@@ -63,16 +63,16 @@ jobs:
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: v0.2.5
+          RELEASE_TAG: v0.2.6
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists; leaving its signed artifact unchanged."
           else
             gh release create "$RELEASE_TAG" \
               --target "$GITHUB_SHA" \
-              --title "ClassCue 0.2.5" \
-              --notes $'## 识别稳定性优化\n\n- 临时转写只更新界面，提醒改为等待最终转写结果，降低远场噪声和吐字不清造成的误报。\n- 为识别输入加入保守的分帧能量门控和语音停顿保护，原始 WAV 继续完整保存。\n- 缩短采集块并延长端点等待，减少自然停顿造成的断句和漏识别。\n- 收紧泛化课堂问题的判定，模糊的单词片段不再直接触发提醒。\n\n## 继承自 0.2.4f\n\n- 修复 `0.2.4p` 启动时读取课次归档 SQL 拼接错误导致的打开即闪退。\n- 远场离线识别增强和麦克风输入策略。\n- 课堂文字与 WAV 长期本机保留、手动删除。\n- 按课次、课程或全部课程导出 Markdown。' \
-              dist/ClassCue-0.2.5-debug-arm64-v8a.apk \
+              --title "ClassCue 0.2.6" \
+              --notes $'## 课堂识别与手表通信\n\n- 恢复华为 Lite Wearable 手表端源码，并在手机端接入 Wear Engine，可向已配对手表发送课堂提醒和 AI 答案。\n- 设置页增加手表开关、包名、HAP 签名指纹和直连测试入口；未配置正式 HAP 指纹时会安全阻止发送。\n- 手表源码、签名前校验脚本和 SDK 完整性校验已随源码公开；正式 HAP 仍需使用开发者自己的 DevEco 工具链与签名材料构建。\n\n## 远场识别与稳定性\n\n- 延长结束课堂时的识别收尾，避免最后一段老师讲话丢失。\n- 识别队列改为有界等待与背压，减少高负载下静默丢帧。\n- 放宽远场低音量门控，改善 Magic8 Pro 等手机在远距离场景的可用输入。\n- 收紧“先叫名后提问”的弱信号判定，降低吐字不清和普通课堂话语造成的误报。\n- Markdown 导出改为流式写入，长期课堂记录导出更稳。\n\n## 使用提示\n\n- 本 APK 是 Android Debug 签名测试包，不能覆盖安装其他证书签名的正式包。\n- 手表端需要正式签名 HAP、配对设备和真机回归；本 Release 不包含签名 HAP。\n- 远场识别仍受距离、回声、口音和麦克风采集能力影响，请在实际课堂中逐步验证。\n\n## 验证\n\n- 35 项 JVM 单元测试通过。\n- Android Lint 0 个错误。\n- Debug APK 构建成功。\n- 手表源码 JavaScript、配置 JSON 和 Wear Engine SDK SHA-256 校验通过。' \
+              dist/ClassCue-0.2.6-debug-arm64-v8a.apk \
               dist/SHA256SUMS.txt \
               dist/SOURCE_COMMIT.txt
           fi
