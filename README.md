@@ -4,7 +4,7 @@
   <p>面向 Android 的课堂实时转写、点名提醒与 AI 回答助手</p>
 
   <p>
-    <img alt="Version 0.2.4f" src="https://img.shields.io/badge/version-0.2.4f-6750A4">
+    <img alt="Version 0.2.5" src="https://img.shields.io/badge/version-0.2.5-6750A4">
     <img alt="Android 13–16" src="https://img.shields.io/badge/Android-13--16-3DDC84?logo=android&logoColor=white">
     <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Java_17-7F52FF?logo=kotlin&logoColor=white">
     <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
@@ -17,7 +17,7 @@
 课醒会在你主动开始一节课后，把同一份麦克风音频同时用于本地 WAV 录音和离线语音识别。它持续分析课堂转写，在疑似点名、明确提问或自定义强提醒词出现时，通过高优先级通知提醒；你也可以把相关文字交给自己配置的 AI 模型生成参考答案。
 
 > [!IMPORTANT]
-> 当前仓库版本为 `0.2.4f`。此修复版解决 `0.2.4p` 启动时读取课次归档 SQL 拼接错误导致的闪退，并保留远场离线识别增强、麦克风选择、长期归档、手动删除和 Markdown 导出。请勿继续使用 `0.2.4p` APK。
+> 当前仓库版本为 `0.2.5`。此版本继续修复 `0.2.4p` 的启动闪退，并优化远场识别稳定性：临时转写不再直接触发提醒，识别输入增加停顿保护和保守噪声门控，课堂问题判定也更谨慎。
 
 ## 为什么做 ClassCue
 
@@ -33,9 +33,9 @@
 
 | 能力 | 当前实现 |
 |---|---|
-| 离线转写 | 单路 `AudioRecord` 采集；内置 Vosk 小模型，可选下载两档 sherpa-onnx Zipformer 模型；支持自适应远场增益与软限幅 |
+| 离线转写 | 单路 `AudioRecord` 采集；内置 Vosk 小模型，可选下载两档 sherpa-onnx Zipformer 模型；支持远场增益、软限幅、保守噪声门控与停顿保护 |
 | 麦克风输入 | 可选择系统自动、手机内置或优先外置麦克风；界面显示原声电平、识别电平和当前增益 |
-| 课堂提醒 | 识别姓名、学号、称呼、点名表达、明确提问、全班问题和自定义强提醒词 |
+| 课堂提醒 | 最终转写确认后识别姓名、学号、称呼、点名表达、明确提问、全班问题和自定义强提醒词 |
 | 上下文捕获 | 支持“先问后点人”和“先点人后问”，前后窗口可在 30–120 秒间调整 |
 | 通知 | 手机高优先级横幅、可调震动强度、Android 实时状态提升请求和 MagicOS 兼容检查 |
 | AI 回答 | 多个兼容 OpenAI Chat Completions 的 HTTPS 服务并行请求，区分极速/强力角色与独立超时 |
@@ -107,7 +107,7 @@ $env:KEXING_MAVEN_PROXY = "https://maven.aliyun.com/repository"
 gradlew.bat testDebugUnitTest lintDebug assembleDebug
 ```
 
-当前版本为 `0.2.4f (13)`。Debug 版本名是 `0.2.4f-debug`，应用 ID 是 `com.classcue.kexing.debug`，可与正式包名构建分开安装。可安装的测试 APK 及 SHA-256 校验文件可从仓库的 [Releases](https://github.com/lu0973-cb02d/ClassCue/releases) 页面下载；该测试包使用 Android Debug 签名，不能覆盖安装由其他证书签名的版本。
+当前版本为 `0.2.5 (14)`。Debug 版本名是 `0.2.5-debug`，应用 ID 是 `com.classcue.kexing.debug`，可与正式包名构建分开安装。可安装的测试 APK 及 SHA-256 校验文件可从仓库的 [Releases](https://github.com/lu0973-cb02d/ClassCue/releases) 页面下载；该测试包使用 Android Debug 签名，不能覆盖安装由其他证书签名的版本。
 
 ## AI 服务配置
 

@@ -45,15 +45,15 @@ jobs:
       - name: Prepare distributable files
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/ClassCue-0.2.4f-debug-arm64-v8a.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/ClassCue-0.2.5-debug-arm64-v8a.apk
           printf '%s\n' "$GITHUB_SHA" > dist/SOURCE_COMMIT.txt
           cd dist
-          sha256sum ClassCue-0.2.4f-debug-arm64-v8a.apk > SHA256SUMS.txt
+          sha256sum ClassCue-0.2.5-debug-arm64-v8a.apk > SHA256SUMS.txt
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ClassCue-0.2.4f-debug-arm64-v8a
+          name: ClassCue-0.2.5-debug-arm64-v8a
           path: dist/*
           if-no-files-found: error
 
@@ -61,16 +61,16 @@ jobs:
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: v0.2.4f
+          RELEASE_TAG: v0.2.5
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists; leaving its signed artifact unchanged."
           else
             gh release create "$RELEASE_TAG" \
               --target "$GITHUB_SHA" \
-              --title "ClassCue 0.2.4f" \
-              --notes $'## 紧急修复\n\n- 修复 `0.2.4p` 启动时读取课次归档 SQL 拼接错误导致的打开即闪退。\n- 新增课次归档 SQL 边界测试，防止 `WHERE` 或 `GROUP BY` 再次与前一段语句粘连。\n\n## 继承自 0.2.4p\n\n- 远场离线识别增强和麦克风输入策略。\n- 课堂文字与 WAV 长期本机保留、手动删除。\n- 按课次、课程或全部课程导出 Markdown。\n\n请勿继续使用存在启动崩溃的 `0.2.4p` APK。' \
-              dist/ClassCue-0.2.4f-debug-arm64-v8a.apk \
+              --title "ClassCue 0.2.5" \
+              --notes $'## 识别稳定性优化\n\n- 临时转写只更新界面，提醒改为等待最终转写结果，降低远场噪声和吐字不清造成的误报。\n- 为识别输入加入保守的分帧能量门控和语音停顿保护，原始 WAV 继续完整保存。\n- 缩短采集块并延长端点等待，减少自然停顿造成的断句和漏识别。\n- 收紧泛化课堂问题的判定，模糊的单词片段不再直接触发提醒。\n\n## 继承自 0.2.4f\n\n- 修复 `0.2.4p` 启动时读取课次归档 SQL 拼接错误导致的打开即闪退。\n- 远场离线识别增强和麦克风输入策略。\n- 课堂文字与 WAV 长期本机保留、手动删除。\n- 按课次、课程或全部课程导出 Markdown。' \
+              dist/ClassCue-0.2.5-debug-arm64-v8a.apk \
               dist/SHA256SUMS.txt \
               dist/SOURCE_COMMIT.txt
           fi

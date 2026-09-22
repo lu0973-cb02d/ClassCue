@@ -4,7 +4,7 @@
   <p>Real-time classroom transcription, name-call alerts, and optional AI answers for Android</p>
 
   <p>
-    <img alt="Version 0.2.4f" src="https://img.shields.io/badge/version-0.2.4f-6750A4">
+    <img alt="Version 0.2.5" src="https://img.shields.io/badge/version-0.2.5-6750A4">
     <img alt="Android 13–16" src="https://img.shields.io/badge/Android-13--16-3DDC84?logo=android&logoColor=white">
     <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Java_17-7F52FF?logo=kotlin&logoColor=white">
     <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
@@ -17,7 +17,7 @@
 ClassCue records a class only after the user starts a session. The same microphone stream is written to a local WAV file and processed by an on-device speech recognizer. ClassCue watches the transcript for signs that the teacher may be calling on the user or asking a question, then raises a high-priority notification. If enabled, it can also send the relevant text to AI endpoints configured by the user and display the returned answers.
 
 > [!IMPORTANT]
-> The current repository version is `0.2.4f`. This hotfix resolves the startup crash in `0.2.4p`, caused by malformed SQL while loading lesson archives, and retains far-field offline recognition enhancement, microphone routing, long-term archives, manual deletion, and Markdown export. Do not continue using the `0.2.4p` APK.
+> The current repository version is `0.2.5`. This release improves far-field stability: partial transcripts no longer trigger alerts, recognizer input keeps short speech pauses, and generic classroom-question matching now requires stronger evidence.
 
 ## Why ClassCue exists
 
@@ -33,9 +33,9 @@ A voice recorder preserves audio, and a general-purpose transcription app produc
 
 | Area | Current implementation |
 |---|---|
-| Offline transcription | A single `AudioRecord` stream; a bundled small Vosk model and two optional sherpa-onnx Zipformer tiers; adaptive far-field gain and soft limiting |
+| Offline transcription | A single `AudioRecord` stream; a bundled small Vosk model and two optional sherpa-onnx Zipformer tiers; far-field gain, soft limiting, conservative noise gating, and pause preservation |
 | Microphone input | System automatic, built-in, or external-first routing, with raw level, recognizer level, and applied gain shown in the UI |
-| Classroom cue detection | Names, student numbers, forms of address, name-call phrases, explicit questions, whole-class questions, and custom high-priority keywords |
+| Classroom cue detection | Final-transcript confirmation for names, student numbers, forms of address, name-call phrases, explicit questions, whole-class questions, and custom high-priority keywords |
 | Context capture | Handles both “question before name” and “name before question”; context windows are adjustable from 30 to 120 seconds |
 | Notifications | High-priority phone banners, configurable vibration strength, Android promoted ongoing notification requests, and MagicOS compatibility checks |
 | AI answers | Parallel requests to multiple HTTPS services compatible with OpenAI Chat Completions, with separate fast/thorough roles and timeouts |
@@ -107,7 +107,7 @@ $env:KEXING_MAVEN_PROXY = "https://maven.aliyun.com/repository"
 gradlew.bat testDebugUnitTest lintDebug assembleDebug
 ```
 
-The current version is `0.2.4f (13)`. The Debug version name is `0.2.4f-debug`, and its application ID is `com.classcue.kexing.debug`, allowing it to be installed separately from builds that use the release application ID. An installable test APK and its SHA-256 checksum are available from [Releases](https://github.com/lu0973-cb02d/ClassCue/releases). The test APK uses an Android Debug signature and cannot update a build signed with a different certificate.
+The current version is `0.2.5 (14)`. The Debug version name is `0.2.5-debug`, and its application ID is `com.classcue.kexing.debug`, allowing it to be installed separately from builds that use the release application ID. An installable test APK and its SHA-256 checksum are available from [Releases](https://github.com/lu0973-cb02d/ClassCue/releases). The test APK uses an Android Debug signature and cannot update a build signed with a different certificate.
 
 ## Configuring AI services
 
