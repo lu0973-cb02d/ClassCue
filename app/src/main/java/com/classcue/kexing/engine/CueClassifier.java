@@ -83,17 +83,18 @@ public final class CueClassifier {
         return base;
     }
 
-    private static boolean hasExplicitQuestionSignal(String text) {
+    public static boolean hasExplicitQuestionSignal(String rawText) {
+        String text = normalize(rawText);
         if (text.contains("?") || text.contains("？")) return true;
         String[] signals = {
-                "吗", "呢", "为什么", "怎么", "如何", "是否", "有没有", "能不能",
-                "可不可以", "请问", "谁", "哪位", "哪个", "哪一个", "请解释", "解释一下",
+                "为什么", "怎么", "如何", "是否", "有没有", "能不能",
+                "可不可以", "请问", "哪位", "哪个", "哪一个", "请解释", "解释一下",
                 "请说明", "说明一下", "请比较", "比较一下", "举例说明", "请回答", "回答一下"
         };
         for (String signal : signals) {
             if (text.contains(signal)) return true;
         }
-        return false;
+        return text.endsWith("吗") || text.endsWith("呢");
     }
 
     private static boolean tokenMatch(String text, String token, boolean contextual) {

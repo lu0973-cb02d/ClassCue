@@ -1,0 +1,35 @@
+<div class="container" onswipe="swipeEvent">
+  <div class="top-row">
+    <text class="app-name">课醒</text>
+    <text class="page-label">{{ pageLabel }}</text>
+  </div>
+
+  <div class="empty" if="{{ !hasRecords }}">
+    <text class="empty-title">暂无课堂问答</text>
+    <text class="empty-body">请在手机课醒中</text>
+    <text class="empty-body">发送一条测试消息</text>
+  </div>
+
+  <list id="answerList" class="answer-list" if="{{ hasRecords }}">
+    <list-item class="answer-item">
+      <text class="cue-title">{{ currentTitle }}</text>
+      <text class="section question">问题</text>
+      <text class="body-text">{{ currentQuestion }}</text>
+      <div class="answer-card fast" if="{{ hasFast }}">
+        <text class="section fast-label">极速 · {{ currentFastModel }}</text>
+        <text class="body-text">{{ currentFastAnswer }}</text>
+      </div>
+      <div class="answer-card strong" if="{{ hasStrong }}">
+        <text class="section strong-label">强力 · {{ currentStrongModel }}</text>
+        <text class="body-text">{{ currentStrongAnswer }}</text>
+      </div>
+      <text class="waiting" if="{{ !hasFast && !hasStrong }}">AI 正在生成答案…</text>
+    </list-item>
+  </list>
+
+  <div class="bottom-row">
+    <text class="arrow" onclick="newerPage">‹</text>
+    <text class="status">{{ statusText }}</text>
+    <text class="arrow" onclick="olderPage">›</text>
+  </div>
+</div>

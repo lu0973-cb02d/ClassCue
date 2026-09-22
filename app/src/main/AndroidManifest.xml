@@ -11,6 +11,10 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <queries>
+        <package android:name="com.huawei.health" />
+    </queries>
+
     <application
         android:name=".ClassCueApplication"
         android:allowBackup="true"
@@ -21,6 +25,10 @@
         android:roundIcon="@drawable/ic_launcher_new"
         android:supportsRtl="true"
         android:theme="@style/Theme.Kexing">
+
+        <meta-data
+            android:name="com.huawei.hms.client.appid"
+            android:value="118731463" />
 
         <activity
             android:name=".MainActivity"

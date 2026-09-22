@@ -39,6 +39,12 @@ data class AppSettings(
     val audioInputStrategy: AudioInputStrategy = AudioInputStrategy.AUTO,
     val farFieldEnhancementEnabled: Boolean = true,
     val phoneVibrationEnabled: Boolean = true,
+    /** Send cue/answer messages to the companion Lite Wearable app over Wear Engine. */
+    val wearEngineEnabled: Boolean = true,
+    val watchVibrationEnabled: Boolean = true,
+    val wearEngineWatchPackage: String = DEFAULT_WATCH_PACKAGE,
+    /** SHA-256 of the signed watch HAP; all-zero is an intentional pre-signing blocker. */
+    val wearEngineWatchFingerprint: String = DEFAULT_WATCH_FINGERPRINT,
     val vibrationStrength: Int = 3,
     val autoAnswer: Boolean = true,
     val aiEnabled: Boolean = false,
@@ -68,5 +74,7 @@ data class AppSettings(
             "我点一个", "我找一位", "抽一位同学"
         )
         const val DEFAULT_PROMPT = """根据老师原话与课堂上下文回答。答案应准确、自然、适合直接口头表达；有多个问题时按“问题1/回答1”编号。信息不足时明确说明，不要编造。"""
+        const val DEFAULT_WATCH_PACKAGE = "com.classcue.kexing.watch"
+        const val DEFAULT_WATCH_FINGERPRINT = "0000000000000000000000000000000000000000000000000000000000000000"
     }
 }

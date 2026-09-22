@@ -1,0 +1,7 @@
+{
+  "string": [
+    { "name": "module_desc", "value": "课醒手表端" },
+    { "name": "MainAbility_desc", "value": "查看课堂问题与 AI 答案" },
+    { "name": "MainAbility_label", "value": "课醒" }
+  ]
+}

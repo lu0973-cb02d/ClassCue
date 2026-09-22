@@ -1,6 +1,6 @@
 # 公开版构建状态
 
-- 版本：`0.2.5 (14)`
+- 版本：`0.2.6 (15)`
 - 整理日期：2026-09-22
 - 应用 ID：`com.classcue.kexing`
 
@@ -14,13 +14,17 @@
 - 新增按课程和课次整理的归档，以及单课次、当前课程和全部课程 Markdown 导出。
 - 修复 `0.2.4p` 课次归档 SQL 缺少分隔符导致的启动闪退，并增加回归测试。
 - 保留课堂提醒、AI 回答、离线模型下载和荣耀横幅兼容逻辑。
+- 恢复华为 Lite Wearable 手表端源码，并接入手机侧 Wear Engine 点名提醒/AI 答案推送；手表正式 HAP 签名和真机验证仍是发布前置条件。
+- Markdown 导出改为流式写入，避免超长课堂归档一次性拼接造成内存峰值。
 
 ## 当前校验
 
-- Android/JVM 单元测试：33 项通过，0 失败。
+- Android/JVM 单元测试：35 项通过，0 失败。
 - Debug APK：完整编译与封装通过。
 - Android Lint：0 个错误、24 个警告、1 个提示；警告主要是 API 写法、依赖/SDK 更新建议、资源维护项和唤醒锁超时建议。
-- Debug 成品身份：`com.classcue.kexing.debug`、`0.2.5-debug (14)`、`arm64-v8a`。
+- Debug 成品身份：`com.classcue.kexing.debug`、`0.2.6-debug (15)`、`arm64-v8a`。
 - 自动构建产物同时发布到 GitHub Actions Artifacts 和 Releases，并附带 SHA-256 校验文件。
 
 本仓库不含项目所有者的正式签名证书或私钥。第三方构建者必须使用自己的证书签名，且其 APK 不能覆盖安装项目所有者私下签名的同包名版本。
+
+手表端同样不含 DevEco/Hvigor 工具链、HAP 证书、Profile、私钥或真实设备 UDID；没有这些材料时只能完成源码校验，不能声称已经生成可提交的正式 HAP。

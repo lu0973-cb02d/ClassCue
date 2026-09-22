@@ -1,0 +1,57 @@
+{
+  "app": {
+    "apiVersion": {
+      "compatible": 6,
+      "releaseType": "Release",
+      "target": 6
+    },
+    "bundleName": "com.classcue.kexing.watch",
+    "vendor": "KexingClassCue",
+    "version": {
+      "code": 1000026,
+      "name": "0.2.6"
+    }
+  },
+  "deviceConfig": {
+    "default": {
+      "debug": true
+    }
+  },
+  "module": {
+    "deviceType": ["liteWearable"],
+    "distro": {
+      "deliveryWithInstall": true,
+      "moduleName": "entry",
+      "moduleType": "entry"
+    },
+    "reqPermissions": [
+      { "name": "ohos.permission.VIBRATE" }
+    ],
+    "abilities": [
+      {
+        "name": "default",
+        "srcLanguage": "js",
+        "srcPath": "default",
+        "icon": "$media:icon",
+        "description": "$string:MainAbility_desc",
+        "label": "$string:MainAbility_label",
+        "type": "page"
+      }
+    ],
+    "metaData": {
+      "customizeData": [
+        {
+          "name": "supportLists",
+          "value": "com.classcue.kexing:745322fd43988ad5630b00e9f24978935a9114b1eb2f48557f1f546292bc81a0",
+          "extra": ""
+        }
+      ]
+    },
+    "js": [
+      {
+        "pages": ["pages/index/index"],
+        "name": "default"
+      }
+    ]
+  }
+}

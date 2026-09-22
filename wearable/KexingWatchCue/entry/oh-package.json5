@@ -1,0 +1,9 @@
+{
+  "name": "entry",
+  "version": "0.2.0",
+  "description": "Kexing answer pager for Lite Wearable",
+  "main": "",
+  "author": "KexingClassCue",
+  "license": "Apache-2.0",
+  "dependencies": {}
+}

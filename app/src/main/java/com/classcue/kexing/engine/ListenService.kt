@@ -76,7 +76,7 @@ class ListenService : Service() {
 
     private fun startSession() {
         if (!running.compareAndSet(false, true)) return
-        recentUtterances.clear()
+        synchronized(recentUtterances) { recentUtterances.clear() }
         identityArmedUntil = 0L
         lastAlertAt = 0L
         lastAlertKey = ""
@@ -227,12 +227,13 @@ class ListenService : Service() {
     }
 
     private fun stopSession() {
-        val wasRunning = running.getAndSet(false)
+        val wasRunning = running.get()
         getSharedPreferences("service_state", MODE_PRIVATE).edit().putBoolean("active", false).apply()
         recordingEngine?.stop()
-        recordingEngine = null
         transcriber?.stop()
         transcriber = null
+        recordingEngine = null
+        running.set(false)
         releaseWakeLock()
         ClassCueApplication.recordingRepository.cleanupExpired()
         if (wasRunning) {
@@ -254,7 +255,9 @@ class ListenService : Service() {
         if (text.isBlank()) return
         if (isFinal) {
             val timestamp = System.currentTimeMillis()
-            recentUtterances.addLast(TranscriptLine(text, timestamp, true))
+            synchronized(recentUtterances) {
+                recentUtterances.addLast(TranscriptLine(text, timestamp, true))
+            }
             ClassCueApplication.historyStore.insertTranscript(
                 TranscriptRecord(
                     createdAt = timestamp,
@@ -264,8 +267,10 @@ class ListenService : Service() {
                 )
             )
             val cutoff = timestamp - ClassCueApplication.settingsStore.settings.value.contextBeforeSeconds * 1_000L
-            while (recentUtterances.isNotEmpty() && recentUtterances.first.timestamp < cutoff) {
-                recentUtterances.removeFirst()
+            synchronized(recentUtterances) {
+                while (recentUtterances.isNotEmpty() && recentUtterances.first.timestamp < cutoff) {
+                    recentUtterances.removeFirst()
+                }
             }
             ClassCueRuntime.update { current ->
                 current.copy(
@@ -290,11 +295,12 @@ class ListenService : Service() {
         if (identityMentioned) {
             identityArmedUntil = now + settings.followupWindowSeconds * 1_000L
         }
-        if (now < identityArmedUntil && looksLikeQuestion(text)) {
+        val explicitQuestion = CueClassifier.hasExplicitQuestionSignal(text)
+        if (now < identityArmedUntil && explicitQuestion) {
             identityArmedUntil = now + settings.followupWindowSeconds * 1_000L
         }
         val classified = CueClassifier.classify(text, settings.classifierConfig())
-        val rawResult = if (!classified.shouldAlert() && now < identityArmedUntil && looksLikeQuestion(text)) {
+        val rawResult = if (!classified.shouldAlert() && now < identityArmedUntil && explicitQuestion) {
             CueResult(
                 CueType.DIRECT_QUESTION,
                 RiskLevel.MEDIUM,
@@ -303,7 +309,7 @@ class ListenService : Service() {
             )
         } else classified
         val cutoff = now - settings.contextBeforeSeconds * 1_000L
-        val contextLines = (recentUtterances.filter { it.timestamp >= cutoff }.map { it.text } + text)
+        val contextLines = (recentTextSince(cutoff) + text)
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .fold(mutableListOf<String>()) { lines, line ->
@@ -344,6 +350,7 @@ class ListenService : Service() {
         )
         latestCueEventId = eventId
         notifyCue(eventId, result, contextWindow, answer = null, settings)
+        WearEngineBridge.sendCue(this, eventId, cueTitle(result), contextWindow, settings)
         if (settings.phoneVibrationEnabled) {
             vibrate(result.risk, settings.vibrationStrength)
         }
@@ -351,7 +358,7 @@ class ListenService : Service() {
         if (settings.aiEnabled && settings.autoAnswer &&
             result.type in setOf(CueType.DIRECT_QUESTION, CueType.GENERAL_QUESTION)
         ) {
-            val context = recentUtterances.map { it.text }.takeLast(20).joinToString("\n")
+            val context = recentTextTail(20)
             requestAiAnswers(eventId, result, contextWindow, context, settings)
         }
     }
@@ -374,7 +381,7 @@ class ListenService : Service() {
             result = result,
             question = question,
             recentContext = if (running.get()) {
-                recentUtterances.map { it.text }.takeLast(20).joinToString("\n")
+                recentTextTail(20)
             } else {
                 event.transcript
             },
@@ -451,6 +458,14 @@ class ListenService : Service() {
                                 "【本次发送】\n${manualQuestion.trim()}\n\n$responses"
                             }
                             ClassCueApplication.historyStore.updateAnswer(eventId, combined)
+                            WearEngineBridge.sendAnswer(
+                                context = this@ListenService,
+                                eventId = eventId,
+                                tier = tier,
+                                model = profile.model,
+                                answer = answer,
+                                settings = settings
+                            )
                             if (latestCueEventId == eventId) {
                                 notifyCue(eventId, result, question, combined, settings, onlyAlertOnce = true)
                             }
@@ -482,6 +497,14 @@ class ListenService : Service() {
 
     private fun looksLikeQuestion(text: String): Boolean {
         return CueClassifier.looksLikeQuestion(text)
+    }
+
+    private fun recentTextSince(cutoff: Long): List<String> = synchronized(recentUtterances) {
+        recentUtterances.filter { it.timestamp >= cutoff }.map { it.text }
+    }
+
+    private fun recentTextTail(limit: Int): String = synchronized(recentUtterances) {
+        recentUtterances.map { it.text }.takeLast(limit).joinToString("\n")
     }
 
     private fun mentionsIdentity(text: String, settings: AppSettings): Boolean {

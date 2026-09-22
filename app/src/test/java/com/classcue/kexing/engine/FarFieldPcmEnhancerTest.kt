@@ -68,6 +68,17 @@ class FarFieldPcmEnhancerTest {
     }
 
     @Test
+    fun veryQuietFarFieldSpeechRemainsAvailableToRecognizer() {
+        val input = sineWave(amplitude = 40, samples = 1_600)
+
+        val result = FarFieldPcmEnhancer(enabled = true).process(input)
+
+        assertTrue(result.diagnostics.rawRmsDbfs < -60.0)
+        assertTrue(result.diagnostics.speechLikely)
+        assertTrue(readSamples(result.pcm).any { it != 0 })
+    }
+
+    @Test
     fun shortPauseKeepsHangoverWhileLongQuietTailIsSuppressed() {
         val samples = IntArray(320 * 16)
         for (index in 0 until 320) samples[index] = 700

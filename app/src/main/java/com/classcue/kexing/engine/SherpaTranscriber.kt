@@ -37,13 +37,17 @@ class SherpaTranscriber(
     companion object {
         private val END = ByteArray(0)
         private const val SAMPLE_RATE = 16_000
+        private const val QUEUE_CAPACITY = 600
+        private const val DRAIN_TIMEOUT_MS = 15_000L
 
     }
 
     private val running = AtomicBoolean(false)
-    private val queue = ArrayBlockingQueue<ByteArray>(160)
+    private val queue = ArrayBlockingQueue<ByteArray>(QUEUE_CAPACITY)
     private var worker: Thread? = null
     @Volatile private var fallback: TranscriberEngine? = null
+    @Volatile private var droppedChunks = 0
+    @Volatile private var lastBackpressureNoticeAt = 0L
 
     override fun start() {
         check(running.compareAndSet(false, true)) { "Sherpa transcriber is already running" }
@@ -56,9 +60,14 @@ class SherpaTranscriber(
             return
         }
         if (!running.get() || pcm.isEmpty()) return
-        if (!queue.offer(pcm)) {
-            queue.poll()
-            queue.offer(pcm)
+        val accepted = runCatching { queue.offer(pcm, 50, TimeUnit.MILLISECONDS) }.getOrDefault(false)
+        if (!accepted) {
+            droppedChunks++
+            val now = System.currentTimeMillis()
+            if (now - lastBackpressureNoticeAt >= 5_000L) {
+                lastBackpressureNoticeAt = now
+                onStatus("离线识别落后，已跳过 $droppedChunks 个音频片段")
+            }
         }
     }
 
@@ -66,12 +75,9 @@ class SherpaTranscriber(
         fallback?.stop()
         fallback = null
         if (!running.compareAndSet(true, false)) return
-        if (!queue.offer(END)) {
-            queue.poll()
-            queue.offer(END)
-        }
-        worker?.interrupt()
-        worker?.join(5_000)
+        runCatching { queue.put(END) }
+        worker?.join(DRAIN_TIMEOUT_MS)
+        if (worker?.isAlive == true) worker?.interrupt()
         worker = null
         queue.clear()
     }
@@ -130,7 +136,7 @@ class SherpaTranscriber(
         val utterance = ArrayList<FloatArray>()
         var previousPartial = ""
         try {
-            while (running.get() || queue.isNotEmpty()) {
+            while (true) {
                 val pcm = queue.poll(500, TimeUnit.MILLISECONDS) ?: continue
                 if (pcm === END) break
                 val samples = pcm16ToFloat(pcm)
@@ -203,7 +209,7 @@ class SherpaTranscriber(
                 // A teacher's mid-sentence pause should not flush the stream too early.
                 // Final alerts are now gated on stable endpoint text, so the small latency
                 // increase is preferable to losing the next phrase after a pause.
-                rule2 = EndpointRule(true, 1.2f, 0.0f),
+                rule2 = EndpointRule(true, 1.8f, 0.0f),
                 rule3 = EndpointRule(false, 0.0f, 18.0f)
             ),
             enableEndpoint = true

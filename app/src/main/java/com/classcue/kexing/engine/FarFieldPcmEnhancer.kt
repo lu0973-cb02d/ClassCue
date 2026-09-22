@@ -23,7 +23,10 @@ class FarFieldPcmEnhancer(
     private val gainFallPerBufferDb: Double = 4.0,
     private val limiterThreshold: Double = 0.86,
     private val noiseGateEnabled: Boolean = true,
-    private val noiseGateThresholdDbfs: Double = -56.0,
+    // Magic8 Pro recordings can put a quiet teacher around -60 dBFS RMS at 20–25 m.
+    // Keep the gate below that range; stronger false-positive control belongs to the
+    // transcript classifier, not to an irreversible audio mute.
+    private val noiseGateThresholdDbfs: Double = -64.0,
     private val speechHangoverFrames: Int = 12,
     private val frameSamples: Int = 320
 ) {

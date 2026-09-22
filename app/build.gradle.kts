@@ -38,8 +38,8 @@ android {
         // The current APK is optimized for modern arm64 Android devices.
         minSdk = 33
         targetSdk = 36
-        versionCode = 14
-        versionName = "0.2.5"
+        versionCode = 15
+        versionName = "0.2.6"
         ndk { abiFilters += "arm64-v8a" }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -106,6 +106,7 @@ dependencies {
     implementation(files("libs/sherpa-onnx-1.13.5.aar"))
     implementation("org.apache.commons:commons-compress:1.27.1")
     implementation("commons-io:commons-io:2.18.0")
+    implementation("com.huawei.hms:wearengine:5.0.3.304")
     testImplementation("junit:junit:4.13.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

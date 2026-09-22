@@ -16,3 +16,7 @@ dist/
 *.p7b
 *.cer
 *.pem
+wearable/**/DEVICE_UDID.txt
+wearable/**/signing/private/
+wearable/**/entry/build/
+wearable/**/.hvigor-user/

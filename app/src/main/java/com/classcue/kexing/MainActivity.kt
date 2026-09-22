@@ -23,6 +23,7 @@ import com.classcue.kexing.engine.ClassCueRuntime
 import com.classcue.kexing.engine.ListenService
 import com.classcue.kexing.engine.ModelDownloadService
 import com.classcue.kexing.engine.OfflineModelPack
+import com.classcue.kexing.engine.WearEngineBridge
 import com.classcue.kexing.model.TranscriptionModelSize
 import com.classcue.kexing.model.ArchiveFilter
 import com.classcue.kexing.model.HistoryArchiveSnapshot
@@ -40,6 +41,7 @@ class MainActivity : ComponentActivity() {
     private var pendingAction = PendingAction.NONE
     private val permissionEpoch = mutableIntStateOf(0)
     private val apiKeysState = mutableStateOf<Map<String, String>>(emptyMap())
+    private val wearEngineStatusState = mutableStateOf("尚未测试 Wear Engine 直连")
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -85,6 +87,8 @@ class MainActivity : ComponentActivity() {
                     onStart = { requestStart() },
                     onStop = { stopListening() },
                     onTestAlert = { requestTestAlert() },
+                    wearEngineStatus = wearEngineStatusState.value,
+                    onTestWearEngine = { testWearEngine() },
                     onUpdateSettings = { transform -> ClassCueApplication.settingsStore.update(transform) },
                     onApiKeyChange = { profileId, value ->
                         apiKeysState.value = apiKeysState.value + (profileId to value)
@@ -157,6 +161,13 @@ class MainActivity : ComponentActivity() {
 
     private fun testAlertNow() {
         startService(Intent(this, ListenService::class.java).setAction(ListenService.ACTION_TEST_ALERT))
+    }
+
+    private fun testWearEngine() {
+        WearEngineBridge.authorizeAndSendTest(
+            activity = this,
+            settings = ClassCueApplication.settingsStore.settings.value
+        ) { status -> runOnUiThread { wearEngineStatusState.value = status } }
     }
 
     private fun retryAi(eventId: Long, question: String, profileIds: List<String>) {
@@ -263,7 +274,9 @@ class MainActivity : ComponentActivity() {
                     check(!snapshot.isEmpty) { "当前范围内没有可导出的课堂文字" }
                     val directory = File(cacheDir, "exports").apply { mkdirs() }
                     val file = File(directory, MarkdownExporter.suggestedFileName(snapshot))
-                    file.writeText(MarkdownExporter.export(snapshot), Charsets.UTF_8)
+                    file.outputStream().bufferedWriter(Charsets.UTF_8).use { writer ->
+                        MarkdownExporter.write(snapshot, writer)
+                    }
                     file
                 }
             }.onSuccess { file ->

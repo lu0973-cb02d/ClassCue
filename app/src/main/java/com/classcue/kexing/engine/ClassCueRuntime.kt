@@ -2,6 +2,7 @@ package com.classcue.kexing.engine
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 
 enum class SessionPhase { STOPPED, STARTING, LISTENING, ERROR }
 
@@ -28,7 +29,7 @@ object ClassCueRuntime {
     val session: StateFlow<SessionState> = _session
 
     fun update(transform: (SessionState) -> SessionState) {
-        _session.value = transform(_session.value)
+        _session.update(transform)
     }
 
     fun reset() { _session.value = SessionState() }

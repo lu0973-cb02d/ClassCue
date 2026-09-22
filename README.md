@@ -4,7 +4,7 @@
   <p>面向 Android 的课堂实时转写、点名提醒与 AI 回答助手</p>
 
   <p>
-    <img alt="Version 0.2.5" src="https://img.shields.io/badge/version-0.2.5-6750A4">
+    <img alt="Version 0.2.6" src="https://img.shields.io/badge/version-0.2.6-6750A4">
     <img alt="Android 13–16" src="https://img.shields.io/badge/Android-13--16-3DDC84?logo=android&logoColor=white">
     <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Java_17-7F52FF?logo=kotlin&logoColor=white">
     <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
@@ -17,7 +17,7 @@
 课醒会在你主动开始一节课后，把同一份麦克风音频同时用于本地 WAV 录音和离线语音识别。它持续分析课堂转写，在疑似点名、明确提问或自定义强提醒词出现时，通过高优先级通知提醒；你也可以把相关文字交给自己配置的 AI 模型生成参考答案。
 
 > [!IMPORTANT]
-> 当前仓库版本为 `0.2.5`。此版本继续修复 `0.2.4p` 的启动闪退，并优化远场识别稳定性：临时转写不再直接触发提醒，识别输入增加停顿保护和保守噪声门控，课堂问题判定也更谨慎。
+> 当前仓库版本为 `0.2.6`。此版本在远场识别、停顿保留、结束课堂时的转写收尾和提醒误报控制上继续收紧，并恢复了可选的华为手表端源码与手机 Wear Engine 通信链路。手表正式 HAP 仍需使用开发者自己的签名材料构建并进行真机回归。
 
 ## 为什么做 ClassCue
 
@@ -38,6 +38,7 @@
 | 课堂提醒 | 最终转写确认后识别姓名、学号、称呼、点名表达、明确提问、全班问题和自定义强提醒词 |
 | 上下文捕获 | 支持“先问后点人”和“先点人后问”，前后窗口可在 30–120 秒间调整 |
 | 通知 | 手机高优先级横幅、可调震动强度、Android 实时状态提升请求和 MagicOS 兼容检查 |
+| 华为手表端 | `wearable/KexingWatchCue` 提供 Lite Wearable 源码；手机可通过 Wear Engine 发送课堂提醒和 AI 答案 |
 | AI 回答 | 多个兼容 OpenAI Chat Completions 的 HTTPS 服务并行请求，区分极速/强力角色与独立超时 |
 | 手动重答 | 可按中文字或英文词块圈选老师原话，支持不连续选择、滑动批选和指定模型重发 |
 | 本地归档 | 按课程和课次长期保存 WAV、课堂转写、提醒、AI 回答及录音偏移，直到用户手动删除 |
@@ -54,6 +55,7 @@ ClassCue 不使用语音播报，也不会把原始录音上传给 AI 服务。
 4. 默认开启“教室远场增强”。如果使用 USB、蓝牙或有线麦克风，可把输入策略改为“外置”。
 5. 如需 AI 回答，添加至少一个 HTTPS BaseURL、模型名和 API Key，并选择“极速”或“强力”角色。
 6. 回到主界面开始听课。通知会先显示老师原话，AI 结果到达后更新同一条提醒；课后可在“历史记录”中导出 Markdown。
+7. 如果要使用手表端，先在 `wearable/KexingWatchCue` 按其 README 构建并签名 HAP，再把该 HAP 的 SHA-256 指纹填入手机“设置 → 华为手表直连”。未完成正式签名和真机配对前，手表发送会被安全阻止。
 
 “我可能被叫到的称呼”可在同一输入框中填写多项，并使用中文逗号、英文逗号、分号或换行分隔，例如：`小明，李同学，班长，课代表`。
 
@@ -107,7 +109,7 @@ $env:KEXING_MAVEN_PROXY = "https://maven.aliyun.com/repository"
 gradlew.bat testDebugUnitTest lintDebug assembleDebug
 ```
 
-当前版本为 `0.2.5 (14)`。Debug 版本名是 `0.2.5-debug`，应用 ID 是 `com.classcue.kexing.debug`，可与正式包名构建分开安装。可安装的测试 APK 及 SHA-256 校验文件可从仓库的 [Releases](https://github.com/lu0973-cb02d/ClassCue/releases) 页面下载；该测试包使用 Android Debug 签名，不能覆盖安装由其他证书签名的版本。
+当前版本为 `0.2.6 (15)`。Debug 版本名是 `0.2.6-debug`，应用 ID 是 `com.classcue.kexing.debug`，可与正式包名构建分开安装。可安装的测试 APK 及 SHA-256 校验文件可从仓库的 [Releases](https://github.com/lu0973-cb02d/ClassCue/releases) 页面下载；该测试包使用 Android Debug 签名，不能覆盖安装由其他证书签名的版本。
 
 ## AI 服务配置
 
@@ -153,6 +155,7 @@ ClassCue/
 ├─ app/src/main/assets/
 │  └─ vosk-model-small-cn-0.22/  # 内置离线小模型
 ├─ app/src/test/  # JVM 单元测试
+├─ wearable/KexingWatchCue/  # 华为 Lite Wearable 手表端源码与签名前校验脚本
 ├─ design/        # 图标设计资源
 └─ LICENSES/      # 第三方许可证副本
 ```
@@ -161,7 +164,7 @@ ClassCue/
 
 当前公开快照已验证：
 
-- 31 项 JVM 单元测试通过，0 失败。
+- 35 项 JVM 单元测试通过，0 失败。
 - Debug APK 完整编译和封装通过。
 - Android Lint 为 0 个错误、24 个警告和 1 个提示。
 - APK 由 GitHub Actions 自动构建，并随版本发布到 Releases。
@@ -176,6 +179,7 @@ ClassCue/
 - MagicOS 是否把 Android 实时通知显示为灵动胶囊由系统决定；项目不调用未公开的厂商私有接口。
 - 中、大档模型包目前通过 HTTPS 下载，但尚未在客户端内固定 SHA-256 校验值。仅应使用仓库预设的官方上游地址。
 - 当前只提供中文界面和 `arm64-v8a` 构建目标。
+- 手表端源码依赖华为 DevEco/Hvigor、正式 HAP 签名证书/Profile 和真实华为手表；这些材料不包含在公开仓库中，因此当前仓库不能宣称已经生成可提交的签名 HAP。
 
 ## 贡献
 

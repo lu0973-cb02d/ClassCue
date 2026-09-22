@@ -145,6 +145,8 @@ fun ClassCueRoot(
     onStart: () -> Unit,
     onStop: () -> Unit,
     onTestAlert: () -> Unit,
+    wearEngineStatus: String,
+    onTestWearEngine: () -> Unit,
     onUpdateSettings: ((AppSettings) -> AppSettings) -> Unit,
     onApiKeyChange: (String, String) -> Unit,
     onDeleteAiProfile: (String) -> Unit,
@@ -263,6 +265,8 @@ fun ClassCueRoot(
                 onDeleteModel = onDeleteModel,
                 modelDeletionEnabled = session.phase == SessionPhase.STOPPED,
                 onTestAlert = onTestAlert,
+                wearEngineStatus = wearEngineStatus,
+                onTestWearEngine = onTestWearEngine,
                 onOpenNotificationSettings = onOpenNotificationSettings,
                 onOpenLiveUpdateSettings = onOpenLiveUpdateSettings,
                 onOpenBatterySettings = onOpenBatterySettings
@@ -1109,6 +1113,8 @@ private fun SettingsScreen(
     onDeleteModel: (OfflineModelPack) -> Unit,
     modelDeletionEnabled: Boolean,
     onTestAlert: () -> Unit,
+    wearEngineStatus: String,
+    onTestWearEngine: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
     onOpenLiveUpdateSettings: () -> Unit,
     onOpenBatterySettings: () -> Unit
@@ -1352,6 +1358,46 @@ private fun SettingsScreen(
                 TextButton(onClick = onOpenNotificationSettings, modifier = Modifier.fillMaxWidth()) {
                     Text("检查课堂提醒横幅设置")
                 }
+                HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                Text("华为手表直连", fontWeight = FontWeight.Medium)
+                SettingSwitchRow(
+                    title = "发送到手表",
+                    subtitle = "识别到点名/提问和 AI 回答后，通过 Wear Engine 推送到已连接的华为手表",
+                    checked = settings.wearEngineEnabled,
+                    onChecked = { value -> onUpdateSettings { it.copy(wearEngineEnabled = value) } }
+                )
+                SettingSwitchRow(
+                    title = "手表震动",
+                    subtitle = "手表端收到课堂提醒时按当前力度震动",
+                    checked = settings.watchVibrationEnabled,
+                    onChecked = { value -> onUpdateSettings { it.copy(watchVibrationEnabled = value) } }
+                )
+                OutlinedTextField(
+                    value = settings.wearEngineWatchPackage,
+                    onValueChange = { value -> onUpdateSettings { it.copy(wearEngineWatchPackage = value.trim()) } },
+                    label = { Text("手表应用包名") },
+                    supportingText = { Text("默认：${AppSettings.DEFAULT_WATCH_PACKAGE}") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = settings.wearEngineWatchFingerprint,
+                    onValueChange = { value -> onUpdateSettings { it.copy(wearEngineWatchFingerprint = value.trim()) } },
+                    label = { Text("手表 HAP 签名 SHA-256") },
+                    supportingText = { Text("必须使用正式签名 HAP 的指纹；未签名前不会发送") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedButton(onClick = onTestWearEngine, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Rounded.Security, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("测试手表直连")
+                }
+                Text(
+                    wearEngineStatus,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
         item {

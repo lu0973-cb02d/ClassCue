@@ -46,6 +46,16 @@ class SettingsStore(context: Context) {
         }.getOrDefault(AudioInputStrategy.AUTO),
         farFieldEnhancementEnabled = prefs.getBoolean("far_field_enhancement_enabled", true),
         phoneVibrationEnabled = readPhoneVibrationEnabled(),
+        wearEngineEnabled = prefs.getBoolean("wear_engine_enabled", true),
+        watchVibrationEnabled = prefs.getBoolean("watch_vibration_enabled", true),
+        wearEngineWatchPackage = prefs.getString(
+            "wear_engine_watch_package",
+            AppSettings.DEFAULT_WATCH_PACKAGE
+        ).orEmpty().ifBlank { AppSettings.DEFAULT_WATCH_PACKAGE },
+        wearEngineWatchFingerprint = prefs.getString(
+            "wear_engine_watch_fingerprint",
+            AppSettings.DEFAULT_WATCH_FINGERPRINT
+        ).orEmpty().ifBlank { AppSettings.DEFAULT_WATCH_FINGERPRINT },
         vibrationStrength = prefs.getInt("vibration_strength", 3).coerceIn(1, 5),
         autoAnswer = prefs.getBoolean("auto_answer", true),
         aiEnabled = prefs.getBoolean("ai_enabled", false),
@@ -78,6 +88,10 @@ class SettingsStore(context: Context) {
             .putString("audio_input_strategy", value.audioInputStrategy.name)
             .putBoolean("far_field_enhancement_enabled", value.farFieldEnhancementEnabled)
             .putBoolean("phone_vibration_enabled", value.phoneVibrationEnabled)
+            .putBoolean("wear_engine_enabled", value.wearEngineEnabled)
+            .putBoolean("watch_vibration_enabled", value.watchVibrationEnabled)
+            .putString("wear_engine_watch_package", value.wearEngineWatchPackage)
+            .putString("wear_engine_watch_fingerprint", value.wearEngineWatchFingerprint)
             .putInt("vibration_strength", value.vibrationStrength)
             .putBoolean("auto_answer", value.autoAnswer)
             .putBoolean("ai_enabled", value.aiEnabled)

@@ -25,11 +25,15 @@ class OfflineTranscriber(
         private const val ASSET_MODEL = "vosk-model-small-cn-0.22"
         private const val INSTALLED_MODEL = "vosk-small-cn-0.22"
         private val END = ByteArray(0)
+        private const val QUEUE_CAPACITY = 600
+        private const val DRAIN_TIMEOUT_MS = 15_000L
     }
 
     private val running = AtomicBoolean(false)
-    private val queue = ArrayBlockingQueue<ByteArray>(160)
+    private val queue = ArrayBlockingQueue<ByteArray>(QUEUE_CAPACITY)
     private var worker: Thread? = null
+    @Volatile private var droppedChunks = 0
+    @Volatile private var lastBackpressureNoticeAt = 0L
 
     override fun start() {
         check(running.compareAndSet(false, true)) { "Offline transcriber is already running" }
@@ -38,19 +42,22 @@ class OfflineTranscriber(
 
     override fun offer(pcm: ByteArray) {
         if (!running.get() || pcm.isEmpty()) return
-        if (!queue.offer(pcm)) {
-            queue.poll()
-            queue.offer(pcm)
+        val accepted = runCatching { queue.offer(pcm, 50, TimeUnit.MILLISECONDS) }.getOrDefault(false)
+        if (!accepted) {
+            droppedChunks++
+            val now = System.currentTimeMillis()
+            if (now - lastBackpressureNoticeAt >= 5_000L) {
+                lastBackpressureNoticeAt = now
+                onStatus("离线识别落后，已跳过 $droppedChunks 个音频片段")
+            }
         }
     }
 
     override fun stop() {
         if (!running.compareAndSet(true, false)) return
-        if (!queue.offer(END)) {
-            queue.poll()
-            queue.offer(END)
-        }
-        worker?.join(5_000)
+        runCatching { queue.put(END) }
+        worker?.join(DRAIN_TIMEOUT_MS)
+        if (worker?.isAlive == true) worker?.interrupt()
         worker = null
         queue.clear()
     }

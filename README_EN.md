@@ -4,7 +4,7 @@
   <p>Real-time classroom transcription, name-call alerts, and optional AI answers for Android</p>
 
   <p>
-    <img alt="Version 0.2.5" src="https://img.shields.io/badge/version-0.2.5-6750A4">
+    <img alt="Version 0.2.6" src="https://img.shields.io/badge/version-0.2.6-6750A4">
     <img alt="Android 13–16" src="https://img.shields.io/badge/Android-13--16-3DDC84?logo=android&logoColor=white">
     <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Java_17-7F52FF?logo=kotlin&logoColor=white">
     <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
@@ -17,7 +17,7 @@
 ClassCue records a class only after the user starts a session. The same microphone stream is written to a local WAV file and processed by an on-device speech recognizer. ClassCue watches the transcript for signs that the teacher may be calling on the user or asking a question, then raises a high-priority notification. If enabled, it can also send the relevant text to AI endpoints configured by the user and display the returned answers.
 
 > [!IMPORTANT]
-> The current repository version is `0.2.5`. This release improves far-field stability: partial transcripts no longer trigger alerts, recognizer input keeps short speech pauses, and generic classroom-question matching now requires stronger evidence.
+> The current repository version is `0.2.6`. This release tightens far-field recognition, pause preservation, end-of-session draining, and false-positive control. It also restores the optional Huawei watch source project and the phone-side Wear Engine channel. A formally signed watch HAP still requires the developer's own signing materials and real-device regression testing.
 
 ## Why ClassCue exists
 
@@ -38,6 +38,7 @@ A voice recorder preserves audio, and a general-purpose transcription app produc
 | Classroom cue detection | Final-transcript confirmation for names, student numbers, forms of address, name-call phrases, explicit questions, whole-class questions, and custom high-priority keywords |
 | Context capture | Handles both “question before name” and “name before question”; context windows are adjustable from 30 to 120 seconds |
 | Notifications | High-priority phone banners, configurable vibration strength, Android promoted ongoing notification requests, and MagicOS compatibility checks |
+| Huawei watch | `wearable/KexingWatchCue` contains the Lite Wearable source; the phone can send classroom cues and AI answers over Wear Engine |
 | AI answers | Parallel requests to multiple HTTPS services compatible with OpenAI Chat Completions, with separate fast/thorough roles and timeouts |
 | Manual retry | Select Chinese characters or English word tokens from the original transcript, including non-contiguous selections and drag selection, then resend to chosen models |
 | Local archive | Course- and lesson-based WAV recordings, transcripts, alerts, AI answers, and recording offsets, retained until manually deleted |
@@ -54,6 +55,7 @@ ClassCue does not use text-to-speech, and it does not upload raw recordings to A
 4. Classroom far-field enhancement is enabled by default. When using a USB, Bluetooth, or wired microphone, select the External input strategy.
 5. To enable AI answers, add at least one HTTPS BaseURL, model name, and API key, then assign either the Fast or Thorough role.
 6. Return to the main screen and start a class session. Notifications show the teacher's original words first and update when AI results arrive; after class, export Markdown from History.
+7. To use the watch, build and sign the HAP under `wearable/KexingWatchCue`, then enter that HAP's SHA-256 fingerprint in Settings → Huawei watch. Sending is intentionally blocked until formal signing and device pairing are complete.
 
 Multiple forms of address can be entered in one field and separated by a Chinese comma, comma, semicolon, or newline—for example: `Xiao Ming, Student Li, class monitor, class representative`.
 
@@ -107,7 +109,7 @@ $env:KEXING_MAVEN_PROXY = "https://maven.aliyun.com/repository"
 gradlew.bat testDebugUnitTest lintDebug assembleDebug
 ```
 
-The current version is `0.2.5 (14)`. The Debug version name is `0.2.5-debug`, and its application ID is `com.classcue.kexing.debug`, allowing it to be installed separately from builds that use the release application ID. An installable test APK and its SHA-256 checksum are available from [Releases](https://github.com/lu0973-cb02d/ClassCue/releases). The test APK uses an Android Debug signature and cannot update a build signed with a different certificate.
+The current version is `0.2.6 (15)`. The Debug version name is `0.2.6-debug`, and its application ID is `com.classcue.kexing.debug`, allowing it to be installed separately from builds that use the release application ID. An installable test APK and its SHA-256 checksum are available from [Releases](https://github.com/lu0973-cb02d/ClassCue/releases). The test APK uses an Android Debug signature and cannot update a build signed with a different certificate.
 
 ## Configuring AI services
 
@@ -153,6 +155,7 @@ ClassCue/
 ├─ app/src/main/assets/
 │  └─ vosk-model-small-cn-0.22/  # Bundled offline small model
 ├─ app/src/test/  # JVM unit tests
+├─ wearable/KexingWatchCue/  # Huawei Lite Wearable source and pre-signing checks
 ├─ design/        # App icon design assets
 └─ LICENSES/      # Copies of third-party licenses
 ```
@@ -161,7 +164,7 @@ ClassCue/
 
 The current public snapshot has been verified with:
 
-- 31 passing JVM unit tests and no failures.
+- 35 passing JVM unit tests and no failures.
 - A successful complete Debug APK build.
 - Android Lint with no errors, 24 warnings, and 1 hint.
 - GitHub Actions builds the APK and attaches it to the corresponding Release.
@@ -176,6 +179,7 @@ See [BUILD_STATUS.md](BUILD_STATUS.md) for the complete scope and known warnings
 - Whether MagicOS renders an Android ongoing notification as a Live Capsule is decided by the operating system. ClassCue does not call undocumented vendor APIs.
 - Medium and large model packages are downloaded over HTTPS, but fixed SHA-256 values are not yet enforced by the client. Use only the official upstream URLs configured in the repository.
 - The current UI is Chinese-only, and the build target is `arm64-v8a` only.
+- The watch source still requires Huawei DevEco/Hvigor, a formal HAP signing certificate/Profile, and a real Huawei watch. Those materials are intentionally excluded, so this repository does not claim to contain a submission-ready signed HAP.
 
 ## Contributing
 
