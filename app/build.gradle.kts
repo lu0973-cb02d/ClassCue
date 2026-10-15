@@ -28,9 +28,9 @@ val releaseSigningConfigured = listOf(
     releaseKeyPassword
 ).all { !it.isNullOrBlank() }
 
-// Optional stable key for the published test APKs. CI restores it from repository secrets so every
-// release shares one certificate and can update the previous build in place. Without it, Android
-// Gradle Plugin falls back to a machine-local debug key that differs on every CI runner.
+// Stable key for the APKs published on GitHub Releases (the `github` build type). CI restores it
+// from repository secrets so every release shares one certificate and updates the previous one in
+// place. Without it the build falls back to the machine-local debug key, which differs per runner.
 fun environmentValue(name: String): String? = System.getenv(name)?.takeIf { it.isNotBlank() }
 val stableApkStoreFile = environmentValue("CLASSCUE_APK_STORE_FILE")
 val stableApkStorePassword = environmentValue("CLASSCUE_APK_STORE_PASSWORD")
@@ -62,8 +62,8 @@ android {
     }
 
     signingConfigs {
-        getByName("debug") {
-            if (stableApkSigningConfigured) {
+        if (stableApkSigningConfigured) {
+            create("github") {
                 storeFile = file(requireNotNull(stableApkStoreFile))
                 storePassword = requireNotNull(stableApkStorePassword)
                 keyAlias = requireNotNull(stableApkKeyAlias)
@@ -94,6 +94,19 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        // Public build for GitHub Releases: optimized and not debuggable like `release`, but with
+        // its own application ID so it never conflicts with the owner's privately signed
+        // `com.classcue.kexing` build or with the `.debug` test builds published up to 0.2.7.
+        create("github") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".github"
+            signingConfig = if (stableApkSigningConfigured) {
+                signingConfigs.getByName("github")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+            matchingFallbacks += listOf("release")
         }
     }
 

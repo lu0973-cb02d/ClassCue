@@ -34,7 +34,7 @@ jobs:
           {
             echo "name=$name"
             echo "code=$code"
-            echo "apk=ClassCue-$name-debug-arm64-v8a.apk"
+            echo "apk=ClassCue-$name-arm64-v8a.apk"
           } >> "$GITHUB_OUTPUT"
           echo "Building ClassCue $name ($code)"
 
@@ -60,7 +60,7 @@ jobs:
           APK_KEY_PASSWORD: ${{ secrets.CLASSCUE_APK_KEY_PASSWORD }}
         run: |
           if [ -z "$APK_KEYSTORE_BASE64" ]; then
-            echo "::warning title=One-off signing key::CLASSCUE_APK_KEYSTORE_BASE64 is not configured. This APK is signed with a throwaway debug key and cannot update earlier releases in place."
+            echo "::warning title=One-off signing key::CLASSCUE_APK_KEYSTORE_BASE64 is not configured. This APK is signed with a throwaway key and cannot update earlier releases in place."
             echo "STABLE_SIGNING=false" >> "$GITHUB_ENV"
             exit 0
           fi
@@ -82,7 +82,7 @@ jobs:
           CLASSCUE_APK_KEY_PASSWORD: ${{ secrets.CLASSCUE_APK_KEY_PASSWORD }}
         run: |
           chmod +x ./gradlew
-          ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
+          ./gradlew --no-daemon testDebugUnitTest lintDebug assembleGithub
 
       - name: Prepare distributable files
         env:
@@ -90,7 +90,7 @@ jobs:
         run: |
           rm -f "$RUNNER_TEMP/classcue-apk.jks"
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk "dist/$APK"
+          cp app/build/outputs/apk/github/app-github.apk "dist/$APK"
           printf '%s\n' "$GITHUB_SHA" > dist/SOURCE_COMMIT.txt
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "dist/$APK" \
             | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' > dist/SIGNING_CERT_SHA256.txt
@@ -105,7 +105,7 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ClassCue-${{ steps.version.outputs.name }}-debug-arm64-v8a
+          name: ClassCue-${{ steps.version.outputs.name }}-arm64-v8a
           path: dist/*
           if-no-files-found: error
 
@@ -133,10 +133,11 @@ jobs:
             echo
             echo "## 签名与升级"
             echo
+            echo "- 安装包名为 \`com.classcue.kexing.github\`，是经过 R8 优化、不可调试的公开版；可以和 0.2.7 及更早的测试版（\`com.classcue.kexing.debug\`）同时安装，旧版里的记录导出后再卸载即可。"
             if [ "$STABLE_SIGNING" = "true" ]; then
-              echo "- 本 APK 使用项目固定的测试签名证书，证书 SHA-256：\`$(cat dist/SIGNING_CERT_SHA256.txt)\`。之后使用同一证书发布的版本可以直接覆盖升级。"
+              echo "- 本 APK 使用项目固定的签名证书，证书 SHA-256：\`$(cat dist/SIGNING_CERT_SHA256.txt)\`。之后使用同一证书发布的版本可以直接覆盖升级。"
             else
-              echo '- 注意：本 APK 由 CI 临时生成的调试证书签名，不能覆盖安装之前的任何版本。升级前请先在“历史记录”中导出需要保留的录音和 Markdown，再卸载旧版。'
+              echo '- 注意：本 APK 由 CI 临时生成的证书签名，之后的版本不能直接覆盖升级。升级前请先在“历史记录”中导出需要保留的录音和 Markdown，再卸载旧版。'
             fi
           } >> "$RUNNER_TEMP/release-notes.md"
           gh release create "$tag" \
