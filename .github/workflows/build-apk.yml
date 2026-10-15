@@ -22,6 +22,22 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Read app version from Gradle
+        id: version
+        run: |
+          name=$(sed -nE 's/^[[:space:]]*versionName = "([^"]+)".*/\1/p' app/build.gradle.kts | head -n1)
+          code=$(sed -nE 's/^[[:space:]]*versionCode = ([0-9]+).*/\1/p' app/build.gradle.kts | head -n1)
+          if [ -z "$name" ] || [ -z "$code" ]; then
+            echo "::error::Could not read versionName/versionCode from app/build.gradle.kts"
+            exit 1
+          fi
+          {
+            echo "name=$name"
+            echo "code=$code"
+            echo "apk=ClassCue-$name-debug-arm64-v8a.apk"
+          } >> "$GITHUB_OUTPUT"
+          echo "Building ClassCue $name ($code)"
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
@@ -36,43 +52,98 @@ jobs:
       - name: Install Android SDK 36
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
+      - name: Restore stable APK signing key (optional)
+        env:
+          APK_KEYSTORE_BASE64: ${{ secrets.CLASSCUE_APK_KEYSTORE_BASE64 }}
+          APK_STORE_PASSWORD: ${{ secrets.CLASSCUE_APK_STORE_PASSWORD }}
+          APK_KEY_ALIAS: ${{ secrets.CLASSCUE_APK_KEY_ALIAS }}
+          APK_KEY_PASSWORD: ${{ secrets.CLASSCUE_APK_KEY_PASSWORD }}
+        run: |
+          if [ -z "$APK_KEYSTORE_BASE64" ]; then
+            echo "::warning title=One-off signing key::CLASSCUE_APK_KEYSTORE_BASE64 is not configured. This APK is signed with a throwaway debug key and cannot update earlier releases in place."
+            echo "STABLE_SIGNING=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          if [ -z "$APK_STORE_PASSWORD" ] || [ -z "$APK_KEY_ALIAS" ] || [ -z "$APK_KEY_PASSWORD" ]; then
+            echo "::error::CLASSCUE_APK_KEYSTORE_BASE64 is set, but the store password, key alias or key password secret is missing."
+            exit 1
+          fi
+          printf '%s' "$APK_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/classcue-apk.jks"
+          echo "CLASSCUE_APK_STORE_FILE=$RUNNER_TEMP/classcue-apk.jks" >> "$GITHUB_ENV"
+          echo "STABLE_SIGNING=true" >> "$GITHUB_ENV"
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
       - name: Test, lint, and build APK
+        env:
+          CLASSCUE_APK_STORE_PASSWORD: ${{ secrets.CLASSCUE_APK_STORE_PASSWORD }}
+          CLASSCUE_APK_KEY_ALIAS: ${{ secrets.CLASSCUE_APK_KEY_ALIAS }}
+          CLASSCUE_APK_KEY_PASSWORD: ${{ secrets.CLASSCUE_APK_KEY_PASSWORD }}
         run: |
           chmod +x ./gradlew
           ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
 
       - name: Prepare distributable files
+        env:
+          APK: ${{ steps.version.outputs.apk }}
         run: |
+          rm -f "$RUNNER_TEMP/classcue-apk.jks"
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/ClassCue-0.2.6-debug-arm64-v8a.apk
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/$APK"
           printf '%s\n' "$GITHUB_SHA" > dist/SOURCE_COMMIT.txt
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "dist/$APK" \
+            | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' > dist/SIGNING_CERT_SHA256.txt
+          if [ ! -s dist/SIGNING_CERT_SHA256.txt ]; then
+            echo "::error::Could not read the APK signing certificate"
+            exit 1
+          fi
+          echo "Signing certificate SHA-256: $(cat dist/SIGNING_CERT_SHA256.txt) (stable=$STABLE_SIGNING)"
           cd dist
-          sha256sum ClassCue-0.2.6-debug-arm64-v8a.apk > SHA256SUMS.txt
+          sha256sum "$APK" > SHA256SUMS.txt
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ClassCue-0.2.6-debug-arm64-v8a
+          name: ClassCue-${{ steps.version.outputs.name }}-debug-arm64-v8a
           path: dist/*
           if-no-files-found: error
 
+      # A Release is created only when release-notes/v<versionName>.md exists and the tag is new,
+      # so ordinary pushes to main build artifacts without publishing anything.
       - name: Publish versioned GitHub Release
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: v0.2.6
+          VERSION: ${{ steps.version.outputs.name }}
+          APK: ${{ steps.version.outputs.apk }}
         run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Release $RELEASE_TAG already exists; leaving its signed artifact unchanged."
-          else
-            gh release create "$RELEASE_TAG" \
-              --target "$GITHUB_SHA" \
-              --title "ClassCue 0.2.6" \
-              --notes $'## 课堂识别与手表通信\n\n- 恢复华为 Lite Wearable 手表端源码，并在手机端接入 Wear Engine，可向已配对手表发送课堂提醒和 AI 答案。\n- 设置页增加手表开关、包名、HAP 签名指纹和直连测试入口；未配置正式 HAP 指纹时会安全阻止发送。\n- 手表源码、签名前校验脚本和 SDK 完整性校验已随源码公开；正式 HAP 仍需使用开发者自己的 DevEco 工具链与签名材料构建。\n\n## 远场识别与稳定性\n\n- 延长结束课堂时的识别收尾，避免最后一段老师讲话丢失。\n- 识别队列改为有界等待与背压，减少高负载下静默丢帧。\n- 放宽远场低音量门控，改善 Magic8 Pro 等手机在远距离场景的可用输入。\n- 收紧“先叫名后提问”的弱信号判定，降低吐字不清和普通课堂话语造成的误报。\n- Markdown 导出改为流式写入，长期课堂记录导出更稳。\n\n## 使用提示\n\n- 本 APK 是 Android Debug 签名测试包，不能覆盖安装其他证书签名的正式包。\n- 手表端需要正式签名 HAP、配对设备和真机回归；本 Release 不包含签名 HAP。\n- 远场识别仍受距离、回声、口音和麦克风采集能力影响，请在实际课堂中逐步验证。\n\n## 验证\n\n- 35 项 JVM 单元测试通过。\n- Android Lint 0 个错误。\n- Debug APK 构建成功。\n- 手表源码 JavaScript、配置 JSON 和 Wear Engine SDK SHA-256 校验通过。' \
-              dist/ClassCue-0.2.6-debug-arm64-v8a.apk \
-              dist/SHA256SUMS.txt \
-              dist/SOURCE_COMMIT.txt
+          tag="v$VERSION"
+          notes="release-notes/$tag.md"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; leaving its published APK unchanged."
+            exit 0
           fi
+          if [ ! -f "$notes" ]; then
+            echo "::notice::$notes not found; built workflow artifacts only, no Release created."
+            exit 0
+          fi
+          cp "$notes" "$RUNNER_TEMP/release-notes.md"
+          {
+            echo
+            echo "## 签名与升级"
+            echo
+            if [ "$STABLE_SIGNING" = "true" ]; then
+              echo "- 本 APK 使用项目固定的测试签名证书，证书 SHA-256：\`$(cat dist/SIGNING_CERT_SHA256.txt)\`。之后使用同一证书发布的版本可以直接覆盖升级。"
+            else
+              echo '- 注意：本 APK 由 CI 临时生成的调试证书签名，不能覆盖安装之前的任何版本。升级前请先在“历史记录”中导出需要保留的录音和 Markdown，再卸载旧版。'
+            fi
+          } >> "$RUNNER_TEMP/release-notes.md"
+          gh release create "$tag" \
+            --target "$GITHUB_SHA" \
+            --title "ClassCue $VERSION" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            "dist/$APK" \
+            dist/SHA256SUMS.txt \
+            dist/SOURCE_COMMIT.txt \
+            dist/SIGNING_CERT_SHA256.txt

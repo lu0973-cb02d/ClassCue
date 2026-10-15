@@ -28,6 +28,21 @@ val releaseSigningConfigured = listOf(
     releaseKeyPassword
 ).all { !it.isNullOrBlank() }
 
+// Optional stable key for the published test APKs. CI restores it from repository secrets so every
+// release shares one certificate and can update the previous build in place. Without it, Android
+// Gradle Plugin falls back to a machine-local debug key that differs on every CI runner.
+fun environmentValue(name: String): String? = System.getenv(name)?.takeIf { it.isNotBlank() }
+val stableApkStoreFile = environmentValue("CLASSCUE_APK_STORE_FILE")
+val stableApkStorePassword = environmentValue("CLASSCUE_APK_STORE_PASSWORD")
+val stableApkKeyAlias = environmentValue("CLASSCUE_APK_KEY_ALIAS")
+val stableApkKeyPassword = environmentValue("CLASSCUE_APK_KEY_PASSWORD")
+val stableApkSigningConfigured = listOf(
+    stableApkStoreFile,
+    stableApkStorePassword,
+    stableApkKeyAlias,
+    stableApkKeyPassword
+).all { it != null }
+
 android {
     namespace = "com.classcue.kexing"
     compileSdk = 36
@@ -47,6 +62,14 @@ android {
     }
 
     signingConfigs {
+        getByName("debug") {
+            if (stableApkSigningConfigured) {
+                storeFile = file(requireNotNull(stableApkStoreFile))
+                storePassword = requireNotNull(stableApkStorePassword)
+                keyAlias = requireNotNull(stableApkKeyAlias)
+                keyPassword = requireNotNull(stableApkKeyPassword)
+            }
+        }
         create("release") {
             if (releaseSigningConfigured) {
                 storeFile = rootProject.file(requireNotNull(releaseStoreFile))
