@@ -4,7 +4,7 @@
   <p>Real-time classroom transcription, name-call alerts, and optional AI answers for Android</p>
 
   <p>
-    <img alt="Version 0.2.6" src="https://img.shields.io/badge/version-0.2.6-6750A4">
+    <img alt="Version 0.2.7" src="https://img.shields.io/badge/version-0.2.7-6750A4">
     <img alt="Android 13–16" src="https://img.shields.io/badge/Android-13--16-3DDC84?logo=android&logoColor=white">
     <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Java_17-7F52FF?logo=kotlin&logoColor=white">
     <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
@@ -17,7 +17,7 @@
 ClassCue records a class only after the user starts a session. The same microphone stream is written to a local WAV file and processed by an on-device speech recognizer. ClassCue watches the transcript for signs that the teacher may be calling on the user or asking a question, then raises a high-priority notification. If enabled, it can also send the relevant text to AI endpoints configured by the user and display the returned answers.
 
 > [!IMPORTANT]
-> The current repository version is `0.2.6`. This release tightens far-field recognition, pause preservation, end-of-session draining, and false-positive control. It also restores the optional Huawei watch source project and the phone-side Wear Engine channel. A formally signed watch HAP still requires the developer's own signing materials and real-device regression testing.
+> The current repository version is `0.2.7`. This release pins exact sizes and SHA-256 digests for the medium and large offline model downloads, and lets GitHub Releases use a stable test signing key so that new APKs can update earlier ones in place. Far-field recognition and the Huawei watch channel are unchanged from `0.2.6`; a formally signed watch HAP still requires the developer's own signing materials and real-device regression testing.
 
 ## Why ClassCue exists
 
@@ -111,7 +111,7 @@ $env:KEXING_MAVEN_PROXY = "https://maven.aliyun.com/repository"
 gradlew.bat testDebugUnitTest lintDebug assembleDebug
 ```
 
-The current version is `0.2.6 (15)`. The Debug version name is `0.2.6-debug`, and its application ID is `com.classcue.kexing.debug`, allowing it to be installed separately from builds that use the release application ID. An installable test APK and its SHA-256 checksum are available from [Releases](https://github.com/lu0973-cb02d/ClassCue/releases). The test APK uses an Android Debug signature and cannot update a build signed with a different certificate.
+The current version is `0.2.7 (16)`. The Debug version name is `0.2.7-debug`, and its application ID is `com.classcue.kexing.debug`, allowing it to be installed separately from builds that use the release application ID. An installable test APK and its SHA-256 checksum are available from [Releases](https://github.com/lu0973-cb02d/ClassCue/releases). Test APKs up to `0.2.6` were each signed with a throwaway CI debug certificate and cannot update one another. Once the maintainer configures the stable test signing key, each Release includes `SIGNING_CERT_SHA256.txt`, and later builds signed with the same certificate update in place. A test APK still cannot update a build signed with a different certificate; see [FORMAL_SIGNING_REQUIRED.md](FORMAL_SIGNING_REQUIRED.md).
 
 ## Configuring AI services
 
@@ -166,9 +166,9 @@ ClassCue/
 
 The current public snapshot has been verified with:
 
-- 35 passing JVM unit tests and no failures.
+- 47 passing JVM unit tests and no failures.
 - A successful complete Debug APK build.
-- Android Lint with no errors, 24 warnings, and 1 hint.
+- Android Lint with no errors, 25 warnings, and 1 hint.
 - GitHub Actions builds the APK and attaches it to the corresponding Release.
 
 See [BUILD_STATUS.md](BUILD_STATUS.md) for the complete scope and known warnings. Publishers who need a signed APK should read [FORMAL_SIGNING_REQUIRED.md](FORMAL_SIGNING_REQUIRED.md).

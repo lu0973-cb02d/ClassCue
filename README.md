@@ -4,7 +4,7 @@
   <p>面向 Android 的课堂实时转写、点名提醒与 AI 回答助手</p>
 
   <p>
-    <img alt="Version 0.2.6" src="https://img.shields.io/badge/version-0.2.6-6750A4">
+    <img alt="Version 0.2.7" src="https://img.shields.io/badge/version-0.2.7-6750A4">
     <img alt="Android 13–16" src="https://img.shields.io/badge/Android-13--16-3DDC84?logo=android&logoColor=white">
     <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Java_17-7F52FF?logo=kotlin&logoColor=white">
     <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
@@ -17,7 +17,7 @@
 课醒会在你主动开始一节课后，把同一份麦克风音频同时用于本地 WAV 录音和离线语音识别。它持续分析课堂转写，在疑似点名、明确提问或自定义强提醒词出现时，通过高优先级通知提醒；你也可以把相关文字交给自己配置的 AI 模型生成参考答案。
 
 > [!IMPORTANT]
-> 当前仓库版本为 `0.2.6`。此版本在远场识别、停顿保留、结束课堂时的转写收尾和提醒误报控制上继续收紧，并恢复了可选的华为手表端源码与手机 Wear Engine 通信链路。手表正式 HAP 仍需使用开发者自己的签名材料构建并进行真机回归。
+> 当前仓库版本为 `0.2.7`。此版本为中、大档离线模型下载加入固定的 SHA-256 与精确大小校验，并让 GitHub Releases 支持固定测试签名，解决此前各版本 APK 证书不同、无法覆盖升级的问题。远场识别和华为手表链路与 `0.2.6` 相同；手表正式 HAP 仍需使用开发者自己的签名材料构建并进行真机回归。
 
 ## 为什么做 ClassCue
 
@@ -111,7 +111,7 @@ $env:KEXING_MAVEN_PROXY = "https://maven.aliyun.com/repository"
 gradlew.bat testDebugUnitTest lintDebug assembleDebug
 ```
 
-当前版本为 `0.2.6 (15)`。Debug 版本名是 `0.2.6-debug`，应用 ID 是 `com.classcue.kexing.debug`，可与正式包名构建分开安装。可安装的测试 APK 及 SHA-256 校验文件可从仓库的 [Releases](https://github.com/lu0973-cb02d/ClassCue/releases) 页面下载；该测试包使用 Android Debug 签名，不能覆盖安装由其他证书签名的版本。
+当前版本为 `0.2.7 (16)`。Debug 版本名是 `0.2.7-debug`，应用 ID 是 `com.classcue.kexing.debug`，可与正式包名构建分开安装。可安装的测试 APK 及 SHA-256 校验文件可从仓库的 [Releases](https://github.com/lu0973-cb02d/ClassCue/releases) 页面下载。`0.2.6` 及更早的测试 APK 均由 CI 临时生成的调试证书签名，彼此不能覆盖安装；维护者配置固定测试签名后，Release 会附带 `SIGNING_CERT_SHA256.txt`，之后使用同一证书的版本可以直接覆盖升级。测试包不能覆盖安装由其他证书签名的版本，详见 [FORMAL_SIGNING_REQUIRED.md](FORMAL_SIGNING_REQUIRED.md)。
 
 ## AI 服务配置
 
@@ -166,9 +166,9 @@ ClassCue/
 
 当前公开快照已验证：
 
-- 35 项 JVM 单元测试通过，0 失败。
+- 47 项 JVM 单元测试通过，0 失败。
 - Debug APK 完整编译和封装通过。
-- Android Lint 为 0 个错误、24 个警告和 1 个提示。
+- Android Lint 为 0 个错误、25 个警告和 1 个提示。
 - APK 由 GitHub Actions 自动构建，并随版本发布到 Releases。
 
 完整边界和已知警告见 [BUILD_STATUS.md](BUILD_STATUS.md)。发布者如需自己的签名 APK，请阅读 [FORMAL_SIGNING_REQUIRED.md](FORMAL_SIGNING_REQUIRED.md)。
