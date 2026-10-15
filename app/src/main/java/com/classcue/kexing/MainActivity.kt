@@ -137,6 +137,7 @@ class MainActivity : ComponentActivity() {
                     onUpdateTimetable = { transform -> updateTimetable(transform) },
                     courseConfirmRequest = courseConfirmRequest.value,
                     onConsumeCourseConfirmRequest = { courseConfirmRequest.value = null },
+                    onDeleteCompressedOriginals = { deleteCompressedOriginals() },
                     onOpenNotificationSettings = { openNotificationSettings() },
                     onOpenLiveUpdateSettings = { openLiveUpdateSettings() },
                     onOpenBatterySettings = { openBatterySettings() }
@@ -280,10 +281,24 @@ class MainActivity : ComponentActivity() {
             channel != null && channel.importance >= NotificationManager.IMPORTANCE_HIGH
     }
 
+    private fun audioMimeType(file: File): String =
+        if (file.extension.equals("m4a", ignoreCase = true)) "audio/mp4" else "audio/wav"
+
+    private fun deleteCompressedOriginals() {
+        lifecycleScope.launch {
+            val freed = withContext(Dispatchers.IO) { ClassCueApplication.recordingRepository.deleteCompressedOriginals() }
+            Toast.makeText(
+                this@MainActivity,
+                "已释放 %.1f MB".format(freed / 1024.0 / 1024.0),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
     private fun openRecording(file: File) {
         val uri = FileProvider.getUriForFile(this, "$packageName.files", file)
         val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "audio/wav")
+            setDataAndType(uri, audioMimeType(file))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         runCatching { startActivity(Intent.createChooser(intent, "播放课堂录音")) }
@@ -292,7 +307,7 @@ class MainActivity : ComponentActivity() {
     private fun shareRecording(file: File) {
         val uri = FileProvider.getUriForFile(this, "$packageName.files", file)
         val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "audio/wav"
+            type = audioMimeType(file)
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }

@@ -89,6 +89,7 @@ fun ClassCueRoot(
     onUpdateTimetable: ((Timetable) -> Timetable) -> Unit,
     courseConfirmRequest: String?,
     onConsumeCourseConfirmRequest: () -> Unit,
+    onDeleteCompressedOriginals: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
     onOpenLiveUpdateSettings: () -> Unit,
     onOpenBatterySettings: () -> Unit
@@ -205,7 +206,8 @@ fun ClassCueRoot(
                 onDeleteLesson = onDeleteLesson,
                 aiEnabled = settings.aiEnabled,
                 loadLesson = loadLesson,
-                searchHistory = searchHistory
+                searchHistory = searchHistory,
+                onDeleteCompressedOriginals = onDeleteCompressedOriginals
             )
             Destination.SETTINGS -> SettingsScreen(
                 modifier = Modifier.padding(padding),

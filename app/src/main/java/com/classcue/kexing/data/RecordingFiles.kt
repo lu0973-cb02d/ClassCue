@@ -54,6 +54,38 @@ object WavHeader {
     }
 }
 
+/** Format of a finished WAV, read from its header. */
+data class WavInfo(val sampleRate: Int, val channels: Int, val bitsPerSample: Int, val dataBytes: Long) {
+    val durationMs: Long
+        get() = if (sampleRate <= 0 || channels <= 0 || bitsPerSample <= 0) 0L
+        else dataBytes * 1_000L / (sampleRate.toLong() * channels * (bitsPerSample / 8))
+
+    companion object {
+        /** Reads a canonical 44-byte PCM header; data length comes from the file size so a stale header cannot lie. */
+        fun read(file: File): WavInfo? = runCatching {
+            RandomAccessFile(file, "r").use { raf ->
+                if (raf.length() < WavHeader.SIZE) return@use null
+                val header = ByteArray(WavHeader.SIZE.toInt())
+                raf.readFully(header)
+                fun int(at: Int) = (header[at].toInt() and 0xff) or ((header[at + 1].toInt() and 0xff) shl 8) or
+                    ((header[at + 2].toInt() and 0xff) shl 16) or ((header[at + 3].toInt() and 0xff) shl 24)
+                fun short(at: Int) = (header[at].toInt() and 0xff) or ((header[at + 1].toInt() and 0xff) shl 8)
+                val tag = { at: Int -> String(header, at, 4, Charsets.US_ASCII) }
+                if (tag(0) != "RIFF" || tag(8) != "WAVE" || tag(36) != "data" || short(20) != 1) return@use null
+                WavInfo(
+                    sampleRate = int(24),
+                    channels = short(22),
+                    bitsPerSample = short(34),
+                    dataBytes = raf.length() - WavHeader.SIZE
+                )
+            }
+        }.getOrNull()
+    }
+}
+
+/** All files of one lesson recording: the lossless WAV and/or its compressed copy. */
+data class RecordingGroup(val baseName: String, val wav: File?, val compressed: File?)
+
 enum class PartialAction { KEEP, RECOVER, DELETE_EMPTY }
 
 /**
@@ -79,6 +111,12 @@ object PartialRecordingPolicy {
 
 /** File-system operations on the recordings folder, kept free of Android types for testing. */
 class RecordingFiles(private val directory: File) {
+    companion object {
+        const val WAV = "wav"
+        const val COMPRESSED = "m4a"
+        const val TEMP_SUFFIX = ".m4a.tmp"
+    }
+
     fun partialFor(recordingName: String): File =
         File(directory, File(recordingName).nameWithoutExtension + ".partial")
 
@@ -108,6 +146,34 @@ class RecordingFiles(private val directory: File) {
         return recovered
     }
 
+    /** Lesson recordings keyed by base name (`class_<start>`), across WAV and AAC copies. */
+    fun groups(): List<RecordingGroup> = directory.listFiles()
+        .orEmpty()
+        .filter { it.isFile && it.extension.lowercase() in setOf(WAV, COMPRESSED) }
+        .groupBy { it.nameWithoutExtension }
+        .map { (base, files) ->
+            RecordingGroup(
+                baseName = base,
+                wav = files.firstOrNull { it.extension.equals(WAV, ignoreCase = true) },
+                compressed = files.firstOrNull { it.extension.equals(COMPRESSED, ignoreCase = true) }
+            )
+        }
+
+    /** WAV files that do not have a compressed copy yet. */
+    fun pendingCompression(): List<File> = groups().filter { it.compressed == null }.mapNotNull { it.wav }
+
+    /** WAV originals whose compressed copy already exists, i.e. space that can be freed. */
+    fun compressedOriginals(): List<File> = groups().filter { it.compressed != null }.mapNotNull { it.wav }
+
+    fun compressedFileFor(wav: File): File = File(wav.parentFile, wav.nameWithoutExtension + "." + COMPRESSED)
+
+    /** Removes leftovers of an interrupted compression run. */
+    fun sweepTemporaryFiles(now: Long) {
+        directory.listFiles()
+            ?.filter { it.isFile && it.name.endsWith(TEMP_SUFFIX) && now - it.lastModified() >= PartialRecordingPolicy.EMPTY_FILE_GRACE_MS }
+            ?.forEach { it.delete() }
+    }
+
     private fun recover(partial: File): File? {
         if (!WavHeader.repair(partial)) return null
         val modifiedAt = partial.lastModified()
@@ -119,5 +185,14 @@ class RecordingFiles(private val directory: File) {
         if (!partial.renameTo(target)) return null
         target.setLastModified(modifiedAt)
         return target
+    }
+}
+
+object CompressionCheck {
+    /** AAC frames are 1024 samples, so a faithful copy can differ by a fraction of a second. */
+    fun durationMatches(expectedMs: Long, actualMs: Long): Boolean {
+        if (expectedMs <= 0L || actualMs <= 0L) return false
+        val tolerance = maxOf(1_000L, expectedMs / 100L)
+        return kotlin.math.abs(expectedMs - actualMs) <= tolerance
     }
 }

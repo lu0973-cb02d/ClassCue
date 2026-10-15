@@ -416,7 +416,7 @@ internal fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(6.dp))
-                Text("录音始终以 16 kHz 单声道原始 WAV 保存；远场增强只作用于离线识别输入，不会把媒体播放内容作为音频流采集。", style = MaterialTheme.typography.bodySmall)
+                Text("录音先以 16 kHz 单声道原始 WAV 保存，课后可压缩为 AAC；远场增强只作用于离线识别输入，不会把媒体播放内容作为音频流采集。", style = MaterialTheme.typography.bodySmall)
             }
         }
         item {
@@ -644,6 +644,19 @@ internal fun SettingsScreen(
                 PermissionRow("通知", hasNotificationPermission)
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(onClick = onOpenNotificationSettings, modifier = Modifier.fillMaxWidth()) { Text("打开系统通知设置") }
+                Spacer(Modifier.height(8.dp))
+                SettingSwitchRow(
+                    title = "课后压缩录音",
+                    subtitle = "下课后在后台把 WAV 压缩为 AAC（约 14 MB/小时，WAV 约 110 MB/小时）；电量低或正在听课时不压缩",
+                    checked = settings.compressRecordings,
+                    onChecked = { value -> onUpdateSettings { it.copy(compressRecordings = value) } }
+                )
+                SettingSwitchRow(
+                    title = "压缩后删除 WAV 原件",
+                    subtitle = "压缩副本核对时长无误后才删除；关闭时两份都保留，可在记录页手动释放",
+                    checked = settings.deleteWavAfterCompression,
+                    onChecked = { value -> onUpdateSettings { it.copy(deleteWavAfterCompression = value) } }
+                )
                 Spacer(Modifier.height(8.dp))
                 Text("原始录音和课堂文字不会自动到期；请定期检查占用，并在历史记录中手动导出或删除。", style = MaterialTheme.typography.bodySmall)
             }

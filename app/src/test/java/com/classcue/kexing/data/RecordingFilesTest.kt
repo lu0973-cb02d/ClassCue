@@ -104,3 +104,66 @@ class RecordingFilesTest {
         assertEquals(64, header.getInt(40))
     }
 }
+
+class RecordingGroupsTest {
+    @get:Rule
+    val temp = TemporaryFolder()
+
+    @Test
+    fun groupsFormatsByLessonAndFindsWorkToDo() {
+        val dir = temp.newFolder("recordings")
+        File(dir, "class_1.wav").writeBytes(ByteArray(100))
+        File(dir, "class_2.wav").writeBytes(ByteArray(100))
+        File(dir, "class_2.m4a").writeBytes(ByteArray(10))
+        File(dir, "class_3.m4a").writeBytes(ByteArray(10))
+        File(dir, "class_4.partial").writeBytes(ByteArray(100))
+        File(dir, "notes.txt").writeText("x")
+        val files = RecordingFiles(dir)
+
+        assertEquals(setOf("class_1", "class_2", "class_3"), files.groups().map { it.baseName }.toSet())
+        assertEquals(listOf("class_1.wav"), files.pendingCompression().map { it.name })
+        assertEquals(listOf("class_2.wav"), files.compressedOriginals().map { it.name })
+        assertEquals("class_1.m4a", files.compressedFileFor(File(dir, "class_1.wav")).name)
+    }
+
+    @Test
+    fun wavInfoReadsTheHeaderWrittenByTheRecorder() {
+        val file = temp.newFile("class_9.wav")
+        RandomAccessFile(file, "rw").use { raf ->
+            raf.setLength(44 + 64_000)
+            WavHeader.write(raf, dataBytes = 64_000)
+        }
+        val info = WavInfo.read(file)!!
+        assertEquals(16_000, info.sampleRate)
+        assertEquals(1, info.channels)
+        assertEquals(16, info.bitsPerSample)
+        assertEquals(2_000L, info.durationMs)
+    }
+
+    @Test
+    fun wavInfoRejectsNonPcmOrTruncatedFiles() {
+        assertEquals(null, WavInfo.read(temp.newFile("empty.wav")))
+        assertEquals(null, WavInfo.read(temp.newFile("junk.wav").apply { writeBytes(ByteArray(100) { 7 }) }))
+    }
+
+    @Test
+    fun staleCompressionLeftoversAreRemoved() {
+        val dir = temp.newFolder("recordings")
+        val now = 1_800_000_000_000L
+        val stale = File(dir, "class_1.m4a.tmp").apply { writeBytes(ByteArray(5)); setLastModified(now - 3 * 3_600_000L) }
+        val fresh = File(dir, "class_2.m4a.tmp").apply { writeBytes(ByteArray(5)); setLastModified(now - 60_000L) }
+        RecordingFiles(dir).sweepTemporaryFiles(now)
+        assertFalse(stale.exists())
+        assertTrue(fresh.exists())
+    }
+}
+
+class CompressionCheckTest {
+    @Test
+    fun acceptsSmallCodecPaddingAndRejectsTruncation() {
+        assertTrue(CompressionCheck.durationMatches(5_400_000L, 5_400_064L))
+        assertTrue(CompressionCheck.durationMatches(2_000L, 2_900L))
+        assertFalse(CompressionCheck.durationMatches(5_400_000L, 5_000_000L))
+        assertFalse(CompressionCheck.durationMatches(2_000L, 0L))
+    }
+}

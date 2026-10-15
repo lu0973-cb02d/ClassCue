@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.os.Build
 import com.classcue.kexing.data.HistoryStore
 import com.classcue.kexing.data.RecordingCleanupJob
+import com.classcue.kexing.data.RecordingCompressionJob
 import com.classcue.kexing.data.RecordingRepository
 import com.classcue.kexing.data.ScheduleStore
 import com.classcue.kexing.engine.ClassReminders
@@ -26,6 +27,9 @@ class ClassCueApplication : Application() {
         scheduleStore = ScheduleStore(this)
         createNotificationChannels()
         RecordingCleanupJob.schedule(this)
+        if (settingsStore.settings.value.compressRecordings && recordingRepository.pendingCompression().isNotEmpty()) {
+            RecordingCompressionJob.schedule(this)
+        }
         ClassReminders.reschedule(this, scheduleStore.timetable.value)
     }
 

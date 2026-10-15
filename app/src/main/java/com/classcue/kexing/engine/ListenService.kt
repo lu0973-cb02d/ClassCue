@@ -15,6 +15,7 @@ import androidx.core.app.NotificationCompat
 import com.classcue.kexing.ClassCueApplication
 import com.classcue.kexing.MainActivity
 import com.classcue.kexing.R
+import com.classcue.kexing.data.RecordingCompressionJob
 import com.classcue.kexing.model.AppSettings
 import com.classcue.kexing.model.AiTier
 import com.classcue.kexing.model.AutoAnswerScope
@@ -299,6 +300,9 @@ class ListenService : Service() {
         releaseWakeLock()
         SessionRecovery.markStopped(this)
         ClassCueApplication.recordingRepository.cleanupExpired()
+        if (ClassCueApplication.settingsStore.settings.value.compressRecordings) {
+            RecordingCompressionJob.schedule(this)
+        }
         if (wasRunning) {
             ClassCueRuntime.update {
                 it.copy(

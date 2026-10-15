@@ -45,6 +45,10 @@ data class AppSettings(
     val nameHotwordsEnabled: Boolean = false,
     /** Use 2 recognition threads instead of 4 to reduce heat and battery drain. */
     val powerSavingRecognition: Boolean = false,
+    /** Compress finished lesson WAVs to AAC in the background (about 1/8 of the size). */
+    val compressRecordings: Boolean = true,
+    /** Delete each WAV once its compressed copy has been verified. Off: keep both until deleted by hand. */
+    val deleteWavAfterCompression: Boolean = false,
     val phoneVibrationEnabled: Boolean = true,
     /** Send cue/answer messages to the companion Lite Wearable app over Wear Engine. */
     val wearEngineEnabled: Boolean = true,

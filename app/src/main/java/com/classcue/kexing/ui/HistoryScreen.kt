@@ -91,8 +91,31 @@ internal fun HistoryScreen(
     aiEnabled: Boolean,
     loadLesson: suspend (LessonSummary) -> LessonArchive?,
     searchHistory: suspend (String) -> List<SearchHit>,
-    initialQuery: String = ""
+    initialQuery: String = "",
+    onDeleteCompressedOriginals: () -> Unit = {}
 ) {
+    var confirmReclaim by remember { mutableStateOf(false) }
+    val reclaimable = remember(recordings) {
+        recordings.filter { it.wavFile != null && it.compressedFile != null }.let { list ->
+            list.size to list.sumOf { it.wavFile?.length() ?: 0L }
+        }
+    }
+    if (confirmReclaim) {
+        AlertDialog(
+            onDismissRequest = { confirmReclaim = false },
+            title = { Text("删除已压缩录音的 WAV 原件？") },
+            text = {
+                Text(
+                    "将删除 ${reclaimable.first} 个已有 AAC 压缩副本的 WAV 原件，释放约 ${formatBytes(reclaimable.second)}。" +
+                        "压缩副本已核对过时长，仍可播放和导出；无损原件删除后无法恢复。"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { onDeleteCompressedOriginals(); confirmReclaim = false }) { Text("删除原件") }
+            },
+            dismissButton = { TextButton(onClick = { confirmReclaim = false }) { Text("取消") } }
+        )
+    }
     var view by rememberSaveable { mutableStateOf(HistoryView.LESSONS) }
     var openedLesson by remember { mutableStateOf<OpenedLesson?>(null) }
     var query by rememberSaveable { mutableStateOf(initialQuery) }
@@ -141,7 +164,7 @@ internal fun HistoryScreen(
         AlertDialog(
             onDismissRequest = { recordingToDelete = null },
             title = { Text("永久删除这段录音？") },
-            text = { Text("将删除 ${formatDate(recording.startedAt)} 的 WAV 文件，文字记录仍会保留。此操作无法撤销。") },
+            text = { Text("将删除 ${formatDate(recording.startedAt)} 这节课的录音（WAV 原件和压缩副本），文字记录仍会保留。此操作无法撤销。") },
             confirmButton = {
                 TextButton(onClick = { onDeleteRecording(recording.file); recordingToDelete = null }) { Text("删除录音") }
             },
@@ -288,7 +311,22 @@ internal fun HistoryScreen(
             }
         } else {
             item {
-                InfoCard(Icons.Rounded.Info, "录音长期保留", "录音不会自动到期；请留意本机占用，并手动导出或删除不再需要的文件。")
+                InfoCard(
+                    Icons.Rounded.Info,
+                    "录音长期保留",
+                    "录音不会自动到期。课后会在后台压缩为 AAC（约为 WAV 的 1/8），默认同时保留 WAV 原件，可在下方一次性释放空间。"
+                )
+            }
+            if (reclaimable.first > 0) {
+                item {
+                    SectionCard("可释放 ${formatBytes(reclaimable.second)}", "${reclaimable.first} 节课已有压缩副本") {
+                        OutlinedButton(onClick = { confirmReclaim = true }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Rounded.Delete, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("删除这些课的 WAV 原件")
+                        }
+                    }
+                }
             }
             if (recordings.isEmpty()) item { EmptyCard("还没有课堂录音", "结束一次听课后，完整 WAV 文件会显示在这里。") }
             items(recordings, key = { it.file.absolutePath }) { recording ->
@@ -432,8 +470,17 @@ internal fun RecordingCard(
                 Column(Modifier.weight(1f)) {
                     Text(formatDate(recording.startedAt), fontWeight = FontWeight.SemiBold)
                     Text(
-                        "${formatDuration(recording.estimatedDurationMs)} · ${formatBytes(recording.bytes)} · 手动管理",
+                        "${if (recording.estimatedDurationMs > 0L) formatDuration(recording.estimatedDurationMs) else "时长未知"} · ${formatBytes(recording.bytes)}",
                         style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        listOfNotNull(
+                            recording.wavFile?.let { "WAV 原件 ${formatBytes(it.length())}" },
+                            recording.compressedFile?.let { "AAC ${formatBytes(it.length())}" }
+                        ).joinToString(" · ").ifEmpty { "—" } +
+                            if (recording.compressedFile == null) " · 等待课后压缩" else "",
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -445,7 +492,7 @@ internal fun RecordingCard(
                     Spacer(Modifier.width(6.dp))
                     Text("播放")
                 }
-                OutlinedButton(onClick = { onShare(recording.file) }, modifier = Modifier.weight(1f)) {
+                OutlinedButton(onClick = { onShare(recording.shareFile) }, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Rounded.Share, null)
                     Spacer(Modifier.width(6.dp))
                     Text("导出")
