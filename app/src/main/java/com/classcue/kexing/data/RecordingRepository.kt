@@ -5,13 +5,10 @@ import com.classcue.kexing.model.RecordingInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.File
-import java.io.RandomAccessFile
-import java.util.concurrent.TimeUnit
 
 class RecordingRepository(private val context: Context) {
     companion object {
         private const val WAV_BYTES_PER_SECOND = 16_000L * 2L
-        private val STALE_PARTIAL_MS = TimeUnit.HOURS.toMillis(2)
     }
 
     private val _recordings = MutableStateFlow<List<RecordingInfo>>(emptyList())
@@ -22,10 +19,10 @@ class RecordingRepository(private val context: Context) {
         File(root, "recordings").also { it.mkdirs() }
     }
 
+    private val files by lazy { RecordingFiles(directory) }
+
     init {
-        recoverInterruptedRecordings()
-        cleanupExpired()
-        refresh()
+        sweepPartials()
     }
 
     fun newSessionFile(now: Long = System.currentTimeMillis()): File {
@@ -34,23 +31,21 @@ class RecordingRepository(private val context: Context) {
     }
 
     @Synchronized
-    fun cleanupExpired(now: Long = System.currentTimeMillis()): Int {
-        return cleanupStalePartials(now)
-    }
+    fun cleanupExpired(now: Long = System.currentTimeMillis()): Int = sweepPartials(now).size
 
-    /** Completed recordings are permanent; only abandoned temporary files are cleaned automatically. */
+    /**
+     * Repairs abandoned partial recordings and removes only partials that hold no audio.
+     * [deadOwnerNames] marks recordings whose session is known to have died, so their
+     * audio is recovered immediately instead of after the live-write grace period.
+     */
     @Synchronized
-    fun cleanupStalePartials(now: Long = System.currentTimeMillis()): Int {
-        var removed = 0
-        directory.listFiles()?.forEach { file ->
-            val isIncompleteStale = file.extension.equals("partial", ignoreCase = true) &&
-                file.lastModified() < now - STALE_PARTIAL_MS
-            if (isIncompleteStale) {
-                if (file.delete()) removed++
-            }
-        }
+    fun sweepPartials(
+        now: Long = System.currentTimeMillis(),
+        deadOwnerNames: Set<String> = emptySet()
+    ): List<String> {
+        val recovered = files.sweepPartials(now, deadOwnerNames)
         refresh(now)
-        return removed
+        return recovered
     }
 
     @Synchronized
@@ -90,52 +85,5 @@ class RecordingRepository(private val context: Context) {
     }
 
     @Synchronized
-    fun recoverInterruptedRecordings(now: Long = System.currentTimeMillis()): Int {
-        var recovered = 0
-        directory.listFiles()?.filter {
-            it.extension == "partial" && it.length() > 44L && it.lastModified() < now - TimeUnit.MINUTES.toMillis(2)
-        }?.forEach { partial ->
-            if (repairWavHeader(partial)) {
-                val target = File(partial.parentFile, partial.nameWithoutExtension + ".wav")
-                val modifiedAt = partial.lastModified()
-                if (partial.renameTo(target)) {
-                    target.setLastModified(modifiedAt)
-                    recovered++
-                }
-            }
-        }
-        if (recovered > 0) refresh(now)
-        return recovered
-    }
-
-    private fun repairWavHeader(file: File): Boolean = runCatching {
-        val dataBytes = file.length() - 44L
-        RandomAccessFile(file, "rw").use { raf ->
-            fun writeIntLE(value: Int) {
-                raf.write(value and 0xff)
-                raf.write(value ushr 8 and 0xff)
-                raf.write(value ushr 16 and 0xff)
-                raf.write(value ushr 24 and 0xff)
-            }
-            fun writeShortLE(value: Int) {
-                raf.write(value and 0xff)
-                raf.write(value ushr 8 and 0xff)
-            }
-            raf.seek(0)
-            raf.writeBytes("RIFF")
-            writeIntLE((36L + dataBytes).coerceAtMost(0xffffffffL).toInt())
-            raf.writeBytes("WAVEfmt ")
-            writeIntLE(16)
-            writeShortLE(1)
-            writeShortLE(1)
-            writeIntLE(16_000)
-            writeIntLE(32_000)
-            writeShortLE(2)
-            writeShortLE(16)
-            raf.writeBytes("data")
-            writeIntLE(dataBytes.coerceAtMost(0xffffffffL).toInt())
-            raf.fd.sync()
-        }
-        true
-    }.getOrDefault(false)
+    fun recoverInterruptedRecordings(now: Long = System.currentTimeMillis()): Int = sweepPartials(now).size
 }

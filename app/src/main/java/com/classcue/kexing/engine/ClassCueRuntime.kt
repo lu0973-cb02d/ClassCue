@@ -4,7 +4,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 
-enum class SessionPhase { STOPPED, STARTING, LISTENING, ERROR }
+enum class SessionPhase { STOPPED, STARTING, LISTENING, ERROR, STOPPING }
 
 data class TranscriptLine(val text: String, val timestamp: Long, val isFinal: Boolean)
 

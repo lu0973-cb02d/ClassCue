@@ -56,6 +56,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.classcue.kexing.engine.InterruptedSession
 import com.classcue.kexing.engine.SessionPhase
 import com.classcue.kexing.engine.SessionState
 import com.classcue.kexing.model.AppSettings
@@ -76,9 +77,17 @@ internal fun ListenScreen(
     onOpenSettings: () -> Unit,
     onUpdateSettings: ((AppSettings) -> AppSettings) -> Unit,
     latestEvent: HistoryEvent?,
-    onRetryEvent: (HistoryEvent) -> Unit
+    onRetryEvent: (HistoryEvent) -> Unit,
+    interruptedSession: InterruptedSession?,
+    onDismissInterrupted: () -> Unit
 ) {
-    val isActive = session.phase in setOf(SessionPhase.STARTING, SessionPhase.LISTENING, SessionPhase.ERROR) && session.startedAt != null
+    val isStopping = session.phase == SessionPhase.STOPPING
+    val isActive = session.phase in setOf(
+        SessionPhase.STARTING,
+        SessionPhase.LISTENING,
+        SessionPhase.ERROR,
+        SessionPhase.STOPPING
+    ) && session.startedAt != null
     var courseName by remember(settings.courseName) { mutableStateOf(settings.courseName) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(isActive) {
@@ -92,6 +101,9 @@ internal fun ListenScreen(
         contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 28.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        if (interruptedSession != null && !isActive) {
+            item { InterruptedSessionCard(interruptedSession, onDismissInterrupted) }
+        }
         if (!hasAudioPermission || !hasNotificationPermission) {
             item {
                 InfoCard(
@@ -138,12 +150,20 @@ internal fun ListenScreen(
         item {
             Button(
                 onClick = if (isActive) onStop else onStart,
+                enabled = !isStopping,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(18.dp)
             ) {
                 Icon(if (isActive) Icons.Rounded.StopCircle else Icons.Rounded.Mic, null)
                 Spacer(Modifier.width(10.dp))
-                Text(if (isActive) "结束本节课并保存" else "开始听课", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    when {
+                        isStopping -> "正在收尾，请稍候…"
+                        isActive -> "结束本节课并保存"
+                        else -> "开始听课"
+                    },
+                    style = MaterialTheme.typography.titleMedium
+                )
             }
         }
         item {
@@ -271,6 +291,7 @@ internal fun StatusCard(session: SessionState, now: Long) {
                     SessionPhase.STARTING -> "正在启动"
                     SessionPhase.LISTENING -> "正在听课"
                     SessionPhase.ERROR -> "部分功能需要恢复"
+                    SessionPhase.STOPPING -> "正在收尾"
                 },
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold
@@ -292,6 +313,33 @@ internal fun StatusCard(session: SessionState, now: Long) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun InterruptedSessionCard(session: InterruptedSession, onDismiss: () -> Unit) {
+    val course = session.courseName.ifBlank { "未命名课程" }
+    val started = if (session.startedAt > 0L) formatDate(session.startedAt) else "上次"
+    val body = buildString {
+        append("$started 开始的《$course》没有正常结束，可能是系统清理了后台或手机重启。")
+        if (session.recoveredRecordingName != null) {
+            append("已恢复约 ${formatDuration(session.recoveredDurationMs)} 的原始录音，")
+        } else {
+            append("没有找到可恢复的录音，")
+        }
+        append("中断前确认的课堂文字都已保存在记录页。课醒不会在后台自动重新开始录音。")
+    }
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.Warning, null)
+                Spacer(Modifier.width(10.dp))
+                Text("上节课意外中断", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(body, style = MaterialTheme.typography.bodyMedium)
+            TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("知道了") }
         }
     }
 }

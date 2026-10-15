@@ -12,6 +12,7 @@ import com.k2fsa.sherpa.onnx.OfflineZipformerCtcModelConfig
 import com.k2fsa.sherpa.onnx.OnlineModelConfig
 import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
+import com.k2fsa.sherpa.onnx.OnlineStream
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
 import java.io.File
 import java.util.concurrent.ArrayBlockingQueue
@@ -39,7 +40,8 @@ class SherpaTranscriber(
         private const val SAMPLE_RATE = 16_000
         private const val QUEUE_CAPACITY = 600
         private const val DRAIN_TIMEOUT_MS = 15_000L
-
+        /** Silence fed before inputFinished() so the last frames reach the decoder. */
+        private const val TAIL_PADDING_SAMPLES = (SAMPLE_RATE * 66) / 100
     }
 
     private val running = AtomicBoolean(false)
@@ -138,7 +140,10 @@ class SherpaTranscriber(
         try {
             while (true) {
                 val pcm = queue.poll(500, TimeUnit.MILLISECONDS) ?: continue
-                if (pcm === END) break
+                if (pcm === END) {
+                    flushLastUtterance(online, stream, offline, utterance)
+                    break
+                }
                 val samples = pcm16ToFloat(pcm)
                 if (samples.isEmpty()) continue
                 if (offline != null) utterance += samples
@@ -165,7 +170,32 @@ class SherpaTranscriber(
         }
     }
 
-    private fun runSecondPass(recognizer: OfflineRecognizer, chunks: MutableList<FloatArray>): String {
+    /**
+     * Emits the sentence that was still in progress when the lesson ended. Without this, words
+     * spoken after the last detected pause were only ever shown as a partial result and lost.
+     */
+    private fun flushLastUtterance(
+        online: OnlineRecognizer,
+        stream: OnlineStream,
+        offline: OfflineRecognizer?,
+        utterance: MutableList<FloatArray>
+    ) {
+        stream.acceptWaveform(FloatArray(TAIL_PADDING_SAMPLES), SAMPLE_RATE)
+        stream.inputFinished()
+        while (online.isReady(stream)) online.decode(stream)
+        val text = normalize(online.getResult(stream).text)
+        if (text.isBlank()) return
+        val finalText = if (offline != null) {
+            runSecondPass(offline, utterance, keepTrailingAudio = false).ifBlank { text }
+        } else text
+        onFinal(finalText)
+    }
+
+    private fun runSecondPass(
+        recognizer: OfflineRecognizer,
+        chunks: MutableList<FloatArray>,
+        keepTrailingAudio: Boolean = true
+    ): String {
         val total = chunks.sumOf { it.size }
         if (total < SAMPLE_RATE / 4) {
             chunks.clear()
@@ -177,7 +207,7 @@ class SherpaTranscriber(
             chunk.copyInto(all, destinationOffset = offset)
             offset += chunk.size
         }
-        val keep = minOf(SAMPLE_RATE / 2, all.size / 3)
+        val keep = if (keepTrailingAudio) minOf(SAMPLE_RATE / 2, all.size / 3) else 0
         val speechEnd = (all.size - keep).coerceAtLeast(1)
         chunks.clear()
         if (keep > 0) chunks += all.copyOfRange(speechEnd, all.size)

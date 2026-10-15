@@ -8,6 +8,7 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import com.classcue.kexing.data.RecordingRepository
+import com.classcue.kexing.data.WavHeader
 import java.io.File
 import java.io.RandomAccessFile
 import java.util.concurrent.atomic.AtomicBoolean
@@ -207,6 +208,7 @@ class PcmRecordingEngine(
         private val raf = RandomAccessFile(file, "rw")
         var dataBytes: Long = 0L
             private set
+        private var closed = false
 
         init {
             raf.setLength(0)
@@ -215,41 +217,18 @@ class PcmRecordingEngine(
 
         @Synchronized
         fun write(buffer: ByteArray, count: Int) {
+            if (closed) return
             raf.write(buffer, 0, count)
             dataBytes += count
         }
 
         @Synchronized
         override fun close() {
-            val byteRate = sampleRate * channels * bitsPerSample / 8
-            val blockAlign = channels * bitsPerSample / 8
-            raf.seek(0)
-            raf.writeBytes("RIFF")
-            writeIntLE((36L + dataBytes).coerceAtMost(0xffffffffL).toInt())
-            raf.writeBytes("WAVEfmt ")
-            writeIntLE(16)
-            writeShortLE(1)
-            writeShortLE(channels)
-            writeIntLE(sampleRate)
-            writeIntLE(byteRate)
-            writeShortLE(blockAlign)
-            writeShortLE(bitsPerSample)
-            raf.writeBytes("data")
-            writeIntLE(dataBytes.coerceAtMost(0xffffffffL).toInt())
+            if (closed) return
+            closed = true
+            WavHeader.write(raf, dataBytes, sampleRate, channels, bitsPerSample)
             raf.fd.sync()
             raf.close()
-        }
-
-        private fun writeIntLE(value: Int) {
-            raf.write(value and 0xff)
-            raf.write(value ushr 8 and 0xff)
-            raf.write(value ushr 16 and 0xff)
-            raf.write(value ushr 24 and 0xff)
-        }
-
-        private fun writeShortLE(value: Int) {
-            raf.write(value and 0xff)
-            raf.write(value ushr 8 and 0xff)
         }
     }
 }

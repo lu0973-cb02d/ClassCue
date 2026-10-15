@@ -10,6 +10,7 @@ import com.classcue.kexing.data.RecordingRepository
 import com.classcue.kexing.data.SecretStore
 import com.classcue.kexing.data.SettingsStore
 import com.classcue.kexing.engine.ModelRepository
+import com.classcue.kexing.engine.SessionRecovery
 
 class ClassCueApplication : Application() {
     override fun onCreate() {
@@ -18,6 +19,7 @@ class ClassCueApplication : Application() {
         secretStore = SecretStore(this)
         historyStore = HistoryStore(this)
         recordingRepository = RecordingRepository(this)
+        SessionRecovery.detect(this, recordingRepository)
         modelRepository = ModelRepository(this)
         createNotificationChannels()
         RecordingCleanupJob.schedule(this)

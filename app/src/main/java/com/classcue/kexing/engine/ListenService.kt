@@ -36,9 +36,11 @@ import java.util.concurrent.atomic.AtomicReference
 class ListenService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val running = AtomicBoolean(false)
+    /** Set while the lesson is being closed on a background thread; new alerts are suppressed. */
+    private val stopping = AtomicBoolean(false)
     private val recentUtterances = ArrayDeque<TranscriptLine>()
-    private var transcriber: TranscriberEngine? = null
-    private var recordingEngine: PcmRecordingEngine? = null
+    @Volatile private var transcriber: TranscriberEngine? = null
+    @Volatile private var recordingEngine: PcmRecordingEngine? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var sessionStartedAt = 0L
     private var sessionCourseName = ""
@@ -56,7 +58,7 @@ class ListenService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         return when (intent?.action) {
             ACTION_STOP -> {
-                stopSession()
+                requestStop()
                 START_NOT_STICKY
             }
             ACTION_TEST_ALERT -> {
@@ -67,9 +69,16 @@ class ListenService : Service() {
                 retryAi(intent)
                 START_NOT_STICKY
             }
-            else -> {
+            ACTION_START -> {
                 startSession()
-                START_STICKY
+                // Not sticky: Android 12+ cannot reopen the microphone from the background, so a
+                // system restart would only produce an empty recording. An interrupted lesson is
+                // recovered and reported by SessionRecovery the next time the app starts.
+                START_NOT_STICKY
+            }
+            else -> {
+                if (!running.get()) stopSelf()
+                START_NOT_STICKY
             }
         }
     }
@@ -91,7 +100,6 @@ class ListenService : Service() {
         startForeground(NOTIFICATION_LISTENING, listeningNotification("正在启动录音和识别…"))
         sessionStartedAt = System.currentTimeMillis()
         sessionCourseName = ClassCueApplication.settingsStore.settings.value.courseName.trim()
-        getSharedPreferences("service_state", MODE_PRIVATE).edit().putBoolean("active", true).apply()
         ClassCueRuntime.update {
             SessionState(
                 phase = SessionPhase.STARTING,
@@ -109,13 +117,13 @@ class ListenService : Service() {
         })
         val inputRouteLabel = AtomicReference("手机麦克风")
         val onStatus: (String) -> Unit = { message ->
-            if (running.get()) {
+            if (running.get() && !stopping.get()) {
                 ClassCueRuntime.update { it.copy(statusText = "$message · 原始录音已开启") }
                 updateListeningNotification("录音中 · $message")
             }
         }
         val onReady: () -> Unit = {
-            if (running.get()) {
+            if (running.get() && !stopping.get()) {
                 ClassCueRuntime.update {
                     it.copy(
                         phase = SessionPhase.LISTENING,
@@ -127,7 +135,7 @@ class ListenService : Service() {
             }
         }
         val onError: (String) -> Unit = { message ->
-            if (running.get()) {
+            if (running.get() && !stopping.get()) {
                 ClassCueRuntime.update {
                     it.copy(
                         phase = SessionPhase.ERROR,
@@ -208,6 +216,12 @@ class ListenService : Service() {
 
         try {
             recordingEngine?.start()
+            SessionRecovery.markActive(
+                context = this,
+                recordingName = recordingEngine?.recordingFileName,
+                courseName = sessionCourseName,
+                startedAt = sessionStartedAt
+            )
             ClassCueRuntime.update {
                 it.copy(
                     recordingName = recordingEngine?.recordingFileName,
@@ -222,19 +236,61 @@ class ListenService : Service() {
             ClassCueRuntime.update {
                 it.copy(phase = SessionPhase.ERROR, statusText = error.message ?: "启动失败")
             }
-            stopSession()
+            stopSessionNow()
         }
     }
 
-    private fun stopSession() {
+    /**
+     * Ends the lesson without blocking the main thread. Closing waits for the recorder to
+     * finalize the WAV and for the recognizer to drain queued audio and emit the last sentence,
+     * which can take several seconds on a busy phone.
+     */
+    private fun requestStop() {
+        if (!running.get()) {
+            if (!stopping.get()) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+            return
+        }
+        if (!stopping.compareAndSet(false, true)) return
+        ClassCueRuntime.update {
+            it.copy(
+                phase = SessionPhase.STOPPING,
+                statusText = "正在收尾：保存录音并识别最后一句…",
+                inputLevel = 0
+            )
+        }
+        updateListeningNotification("正在收尾 · 保存录音和最后一句")
+        Thread({
+            try {
+                releaseCapture()
+            } finally {
+                completeStop(wasRunning = true)
+            }
+        }, "classcue-session-stop").start()
+    }
+
+    /** Synchronous variant for start failures and service destruction. */
+    private fun stopSessionNow() {
         val wasRunning = running.get()
-        getSharedPreferences("service_state", MODE_PRIVATE).edit().putBoolean("active", false).apply()
-        recordingEngine?.stop()
-        transcriber?.stop()
+        releaseCapture()
+        completeStop(wasRunning)
+    }
+
+    private fun releaseCapture() {
+        runCatching { recordingEngine?.stop() }
+        // Drains the recognizer queue; final sentences are still saved while `running` is true.
+        runCatching { transcriber?.stop() }
         transcriber = null
         recordingEngine = null
+    }
+
+    private fun completeStop(wasRunning: Boolean) {
         running.set(false)
+        stopping.set(false)
         releaseWakeLock()
+        SessionRecovery.markStopped(this)
         ClassCueApplication.recordingRepository.cleanupExpired()
         if (wasRunning) {
             ClassCueRuntime.update {
@@ -282,9 +338,11 @@ class ListenService : Service() {
             // Partial ASR is useful for the live transcript, but it is not stable enough
             // for a notification: a single garbled syllable can temporarily resemble a
             // name or a strong keyword in a noisy classroom.
-            ClassCueRuntime.update { it.copy(partialText = text) }
+            if (!stopping.get()) ClassCueRuntime.update { it.copy(partialText = text) }
             return
         }
+        // The lesson is already being closed; keep the text but do not alert any more.
+        if (stopping.get()) return
         detectCue(text)
     }
 
@@ -660,7 +718,8 @@ class ListenService : Service() {
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ClassCue::Listening")
             .apply {
                 setReferenceCounted(false)
-                acquire()
+                // Upper bound so a lost release can never keep the CPU awake indefinitely.
+                acquire(WAKE_LOCK_TIMEOUT_MS)
             }
     }
 
@@ -670,7 +729,7 @@ class ListenService : Service() {
     }
 
     override fun onDestroy() {
-        if (running.get()) stopSession()
+        if (running.get() && !stopping.get()) stopSessionNow()
         scope.cancel()
         super.onDestroy()
     }
@@ -685,6 +744,7 @@ class ListenService : Service() {
         const val EXTRA_PROFILE_IDS = "profile_ids"
         private const val NOTIFICATION_LISTENING = 2001
         private const val NOTIFICATION_ACTIVE_CUE = 2100
+        private const val WAKE_LOCK_TIMEOUT_MS = 8L * 60L * 60L * 1_000L
     }
 
     private data class ModelAnswer(

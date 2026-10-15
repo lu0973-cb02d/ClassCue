@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import com.classcue.kexing.engine.ModelDownloadState
 import com.classcue.kexing.engine.OfflineModelPack
+import com.classcue.kexing.engine.InterruptedSession
 import com.classcue.kexing.engine.SessionPhase
 import com.classcue.kexing.engine.SessionState
 import com.classcue.kexing.model.AppSettings
@@ -49,6 +50,8 @@ fun ClassCueRoot(
     lessonSummaries: List<LessonSummary>,
     recordings: List<RecordingInfo>,
     modelStates: Map<OfflineModelPack, ModelDownloadState>,
+    interruptedSession: InterruptedSession?,
+    onDismissInterrupted: () -> Unit,
     apiKeys: Map<String, String>,
     notificationPermissionGranted: Boolean,
     alertChannelReady: Boolean,
@@ -140,6 +143,8 @@ fun ClassCueRoot(
                 onOpenSettings = { destination = Destination.SETTINGS },
                 onUpdateSettings = onUpdateSettings,
                 latestEvent = events.firstOrNull(),
+                interruptedSession = interruptedSession,
+                onDismissInterrupted = onDismissInterrupted,
                 onRetryEvent = { retryEvent = it }
             )
             Destination.HISTORY -> HistoryScreen(

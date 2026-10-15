@@ -23,6 +23,7 @@ import com.classcue.kexing.engine.ClassCueRuntime
 import com.classcue.kexing.engine.ListenService
 import com.classcue.kexing.engine.ModelDownloadService
 import com.classcue.kexing.engine.OfflineModelPack
+import com.classcue.kexing.engine.SessionRecovery
 import com.classcue.kexing.engine.WearEngineBridge
 import com.classcue.kexing.model.TranscriptionModelSize
 import com.classcue.kexing.model.ArchiveFilter
@@ -71,6 +72,7 @@ class MainActivity : ComponentActivity() {
             val lessonSummaries by ClassCueApplication.historyStore.lessonSummaries.collectAsState()
             val recordings by ClassCueApplication.recordingRepository.recordings.collectAsState()
             val modelStates by ClassCueApplication.modelRepository.states.collectAsState()
+            val interruptedSession by SessionRecovery.interrupted.collectAsState()
             ClassCueTheme {
                 ClassCueRoot(
                     session = session,
@@ -80,6 +82,8 @@ class MainActivity : ComponentActivity() {
                     lessonSummaries = lessonSummaries,
                     recordings = recordings,
                     modelStates = modelStates,
+                    interruptedSession = interruptedSession,
+                    onDismissInterrupted = { SessionRecovery.dismiss(this) },
                     apiKeys = apiKeysState.value,
                     notificationPermissionGranted = hasNotificationPermission(),
                     alertChannelReady = areAlertBannersEnabled(),
