@@ -149,6 +149,8 @@ dependencies {
     testImplementation("com.ibm.icu:icu4j:74.2")
     // Runs the history SQL (migration, lesson upserts, search) against a real SQLite engine.
     testImplementation("org.xerial:sqlite-jdbc:3.46.1.3")
+    // Real org.json for JVM tests (android.jar only has stubs that throw).
+    testImplementation("org.json:json:20240303")
     testImplementation(composeBom)
     testImplementation("androidx.compose.ui:ui-test-junit4")
     testImplementation("org.robolectric:robolectric:4.17")

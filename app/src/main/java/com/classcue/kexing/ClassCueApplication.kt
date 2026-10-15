@@ -7,6 +7,8 @@ import android.os.Build
 import com.classcue.kexing.data.HistoryStore
 import com.classcue.kexing.data.RecordingCleanupJob
 import com.classcue.kexing.data.RecordingRepository
+import com.classcue.kexing.data.ScheduleStore
+import com.classcue.kexing.engine.ClassReminders
 import com.classcue.kexing.data.SecretStore
 import com.classcue.kexing.data.SettingsStore
 import com.classcue.kexing.engine.ModelRepository
@@ -21,8 +23,10 @@ class ClassCueApplication : Application() {
         recordingRepository = RecordingRepository(this)
         SessionRecovery.detect(this, recordingRepository)
         modelRepository = ModelRepository(this)
+        scheduleStore = ScheduleStore(this)
         createNotificationChannels()
         RecordingCleanupJob.schedule(this)
+        ClassReminders.reschedule(this, scheduleStore.timetable.value)
     }
 
     private fun createNotificationChannels() {
@@ -66,6 +70,14 @@ class ClassCueApplication : Application() {
             }
         }
         channels += NotificationChannel(
+            CHANNEL_CLASS_REMINDER,
+            "上课提醒",
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = "按课程表在上课前提示确认课程；不会自动开始录音"
+            setShowBadge(false)
+        }
+        channels += NotificationChannel(
             CHANNEL_MODEL_DOWNLOAD,
             "离线模型下载",
             NotificationManager.IMPORTANCE_LOW
@@ -83,6 +95,7 @@ class ClassCueApplication : Application() {
         const val CHANNEL_ALERT = "classcue_alert_v3"
         const val CHANNEL_ALERT_HONOR = "classcue_alert_v3_honor"
         const val CHANNEL_MODEL_DOWNLOAD = "classcue_model_download_v1"
+        const val CHANNEL_CLASS_REMINDER = "classcue_class_reminder_v1"
 
         fun alertChannelId(phoneVibrationEnabled: Boolean): String =
             if (isHonorDevice() && phoneVibrationEnabled) CHANNEL_ALERT_HONOR else CHANNEL_ALERT
@@ -100,6 +113,8 @@ class ClassCueApplication : Application() {
         lateinit var recordingRepository: RecordingRepository
             private set
         lateinit var modelRepository: ModelRepository
+            private set
+        lateinit var scheduleStore: ScheduleStore
             private set
     }
 }

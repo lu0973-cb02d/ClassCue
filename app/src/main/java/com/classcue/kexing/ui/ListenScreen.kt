@@ -57,6 +57,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.classcue.kexing.engine.InterruptedSession
+import com.classcue.kexing.model.Timetable
+import com.classcue.kexing.model.TimetableResolver
+import java.time.LocalDateTime
 import com.classcue.kexing.engine.SessionPhase
 import com.classcue.kexing.engine.SessionState
 import com.classcue.kexing.model.AppSettings
@@ -79,7 +82,10 @@ internal fun ListenScreen(
     latestEvent: HistoryEvent?,
     onRetryEvent: (HistoryEvent) -> Unit,
     interruptedSession: InterruptedSession?,
-    onDismissInterrupted: () -> Unit
+    onDismissInterrupted: () -> Unit,
+    timetable: Timetable = Timetable(),
+    confirmRequest: String? = null,
+    onConsumeConfirmRequest: () -> Unit = {}
 ) {
     val isStopping = session.phase == SessionPhase.STOPPING
     val isActive = session.phase in setOf(
@@ -89,6 +95,37 @@ internal fun ListenScreen(
         SessionPhase.STOPPING
     ) && session.startedAt != null
     var courseName by remember(settings.courseName) { mutableStateOf(settings.courseName) }
+    var clock by remember { mutableStateOf(LocalDateTime.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            clock = LocalDateTime.now()
+            delay(30_000)
+        }
+    }
+    val suggestion = remember(timetable, clock) { TimetableResolver.suggestion(timetable, clock) }
+    var confirming by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(confirmRequest, isActive) {
+        if (confirmRequest != null) {
+            if (!isActive) confirming = confirmRequest
+            onConsumeConfirmRequest()
+        }
+    }
+    // With a timetable, every lesson is confirmed against it before recording starts.
+    val requestStart: () -> Unit = { if (timetable.slots.isNotEmpty()) confirming = "" else onStart() }
+    confirming?.let { preselect ->
+        CourseConfirmDialog(
+            suggestion = TimetableResolver.suggestion(timetable, LocalDateTime.now()),
+            typedCourse = settings.courseName,
+            knownCourses = timetable.courseNames,
+            preselect = preselect.ifBlank { null },
+            onDismiss = { confirming = null },
+            onConfirm = { chosen ->
+                onUpdateSettings { it.copy(courseName = chosen.trim()) }
+                confirming = null
+                onStart()
+            }
+        )
+    }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(isActive) {
         while (isActive) {
@@ -142,6 +179,28 @@ internal fun ListenScreen(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                if (!isActive && suggestion != null) {
+                    val scheduled = suggestion.slot
+                    if (scheduled.courseName != settings.courseName.trim()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "课程表：现在是《${scheduled.courseName}》${timeRange(scheduled)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = { onUpdateSettings { it.copy(courseName = scheduled.courseName) } }) {
+                                Text("改用")
+                            }
+                        }
+                    } else {
+                        Text(
+                            "与课程表一致 · ${timeRange(scheduled)}${scheduled.location.takeIf(String::isNotBlank)?.let { " · $it" }.orEmpty()}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
         item {
@@ -149,7 +208,7 @@ internal fun ListenScreen(
         }
         item {
             Button(
-                onClick = if (isActive) onStop else onStart,
+                onClick = if (isActive) onStop else requestStart,
                 enabled = !isStopping,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(18.dp)

@@ -20,6 +20,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import com.classcue.kexing.data.MarkdownExporter
 import com.classcue.kexing.engine.ClassCueRuntime
+import com.classcue.kexing.engine.ClassReminders
 import com.classcue.kexing.engine.ListenService
 import com.classcue.kexing.engine.ModelDownloadService
 import com.classcue.kexing.engine.OfflineModelPack
@@ -29,6 +30,7 @@ import com.classcue.kexing.model.TranscriptionModelSize
 import com.classcue.kexing.model.ArchiveFilter
 import com.classcue.kexing.model.HistoryArchiveSnapshot
 import com.classcue.kexing.model.LessonSummary
+import com.classcue.kexing.model.Timetable
 import com.classcue.kexing.ui.ClassCueRoot
 import com.classcue.kexing.ui.SEARCH_LIMIT
 import com.classcue.kexing.ui.ClassCueTheme
@@ -44,6 +46,8 @@ class MainActivity : ComponentActivity() {
     private val permissionEpoch = mutableIntStateOf(0)
     private val apiKeysState = mutableStateOf<Map<String, String>>(emptyMap())
     private val wearEngineStatusState = mutableStateOf("尚未测试 Wear Engine 直连")
+    /** Set when a class reminder notification is tapped; the listen screen then confirms the course. */
+    private val courseConfirmRequest = mutableStateOf<String?>(null)
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -61,6 +65,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleReminderIntent(intent)
         apiKeysState.value = ClassCueApplication.settingsStore.settings.value.aiProfiles.associate { profile ->
             profile.id to ClassCueApplication.secretStore.getApiKey(profile.id)
         }
@@ -74,6 +79,7 @@ class MainActivity : ComponentActivity() {
             val recordings by ClassCueApplication.recordingRepository.recordings.collectAsState()
             val modelStates by ClassCueApplication.modelRepository.states.collectAsState()
             val interruptedSession by SessionRecovery.interrupted.collectAsState()
+            val timetable by ClassCueApplication.scheduleStore.timetable.collectAsState()
             ClassCueTheme {
                 ClassCueRoot(
                     session = session,
@@ -127,11 +133,38 @@ class MainActivity : ComponentActivity() {
                     searchHistory = { query ->
                         withContext(Dispatchers.IO) { ClassCueApplication.historyStore.search(query, SEARCH_LIMIT) }
                     },
+                    timetable = timetable,
+                    onUpdateTimetable = { transform -> updateTimetable(transform) },
+                    courseConfirmRequest = courseConfirmRequest.value,
+                    onConsumeCourseConfirmRequest = { courseConfirmRequest.value = null },
                     onOpenNotificationSettings = { openNotificationSettings() },
                     onOpenLiveUpdateSettings = { openLiveUpdateSettings() },
                     onOpenBatterySettings = { openBatterySettings() }
                 )
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleReminderIntent(intent)
+    }
+
+    private fun handleReminderIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(ClassReminders.EXTRA_CONFIRM_COURSE, false) != true) return
+        courseConfirmRequest.value = intent.getStringExtra(ClassReminders.EXTRA_COURSE_NAME).orEmpty()
+        // Consume the extra so a configuration change does not reopen the dialog.
+        intent.removeExtra(ClassReminders.EXTRA_CONFIRM_COURSE)
+    }
+
+    private fun updateTimetable(transform: (Timetable) -> Timetable) {
+        val before = ClassCueApplication.scheduleStore.timetable.value
+        ClassCueApplication.scheduleStore.update(transform)
+        val after = ClassCueApplication.scheduleStore.timetable.value
+        ClassReminders.reschedule(this, after)
+        if (after.reminderEnabled && !before.reminderEnabled && !hasNotificationPermission()) {
+            permissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
         }
     }
 

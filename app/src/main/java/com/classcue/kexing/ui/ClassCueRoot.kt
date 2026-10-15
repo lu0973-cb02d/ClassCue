@@ -39,8 +39,13 @@ import com.classcue.kexing.model.SearchHit
 import com.classcue.kexing.model.RecordingInfo
 import com.classcue.kexing.model.TranscriptRecord
 import java.io.File
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.runtime.LaunchedEffect
+import com.classcue.kexing.model.Timetable
+import java.time.LocalDateTime
+import kotlinx.coroutines.delay
 
-internal enum class Destination(val title: String) { LISTEN("听课"), HISTORY("历史记录"), SETTINGS("设置") }
+internal enum class Destination(val title: String) { LISTEN("听课"), SCHEDULE("课程表"), HISTORY("历史记录"), SETTINGS("设置") }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,11 +85,18 @@ fun ClassCueRoot(
     onDeleteLesson: (LessonSummary) -> Unit,
     loadLesson: suspend (LessonSummary) -> LessonArchive?,
     searchHistory: suspend (String) -> List<SearchHit>,
+    timetable: Timetable,
+    onUpdateTimetable: ((Timetable) -> Timetable) -> Unit,
+    courseConfirmRequest: String?,
+    onConsumeCourseConfirmRequest: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
     onOpenLiveUpdateSettings: () -> Unit,
     onOpenBatterySettings: () -> Unit
 ) {
     var destination by rememberSaveable { mutableStateOf(Destination.LISTEN) }
+    LaunchedEffect(courseConfirmRequest) {
+        if (courseConfirmRequest != null) destination = Destination.LISTEN
+    }
     var retryEvent by remember { mutableStateOf<HistoryEvent?>(null) }
     retryEvent?.let { event ->
         AiRetryDialog(
@@ -120,6 +132,12 @@ fun ClassCueRoot(
                     colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.primaryContainer)
                 )
                 NavigationBarItem(
+                    selected = destination == Destination.SCHEDULE,
+                    onClick = { destination = Destination.SCHEDULE },
+                    icon = { Icon(Icons.Rounded.CalendarMonth, null) },
+                    label = { Text("课表") }
+                )
+                NavigationBarItem(
                     selected = destination == Destination.HISTORY,
                     onClick = { destination = Destination.HISTORY },
                     icon = { Icon(Icons.Rounded.History, null) },
@@ -149,8 +167,26 @@ fun ClassCueRoot(
                 latestEvent = events.firstOrNull(),
                 interruptedSession = interruptedSession,
                 onDismissInterrupted = onDismissInterrupted,
+                timetable = timetable,
+                confirmRequest = courseConfirmRequest,
+                onConsumeConfirmRequest = onConsumeCourseConfirmRequest,
                 onRetryEvent = { retryEvent = it }
             )
+            Destination.SCHEDULE -> {
+                var clock by remember { mutableStateOf(LocalDateTime.now()) }
+                LaunchedEffect(Unit) {
+                    while (true) {
+                        clock = LocalDateTime.now()
+                        delay(30_000)
+                    }
+                }
+                ScheduleScreen(
+                    modifier = Modifier.padding(padding),
+                    timetable = timetable,
+                    now = clock,
+                    onUpdate = onUpdateTimetable
+                )
+            }
             Destination.HISTORY -> HistoryScreen(
                 modifier = Modifier.padding(padding),
                 events = events,
