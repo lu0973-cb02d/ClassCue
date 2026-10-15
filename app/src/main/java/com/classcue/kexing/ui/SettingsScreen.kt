@@ -62,6 +62,7 @@ import com.classcue.kexing.engine.OfflineModelPack
 import com.classcue.kexing.model.AppSettings
 import com.classcue.kexing.model.AiProfile
 import com.classcue.kexing.model.AiTier
+import com.classcue.kexing.model.AutoAnswerScope
 import com.classcue.kexing.model.DetectionMode
 import com.classcue.kexing.model.RecordingInfo
 import com.classcue.kexing.model.TranscriptionModelSize
@@ -506,6 +507,38 @@ internal fun SettingsScreen(
                             checked = settings.autoAnswer,
                             onChecked = { value -> onUpdateSettings { it.copy(autoAnswer = value) } }
                         )
+                        AnimatedVisibility(settings.autoAnswer) {
+                            Column {
+                                Spacer(Modifier.height(8.dp))
+                                Text("自动回答范围", fontWeight = FontWeight.Medium)
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    FilterChip(
+                                        selected = settings.autoAnswerScope == AutoAnswerScope.DIRECTED_AT_ME,
+                                        onClick = { onUpdateSettings { it.copy(autoAnswerScope = AutoAnswerScope.DIRECTED_AT_ME) } },
+                                        label = { Text("只在问到我时（推荐）") }
+                                    )
+                                    FilterChip(
+                                        selected = settings.autoAnswerScope == AutoAnswerScope.ALL_QUESTIONS,
+                                        onClick = { onUpdateSettings { it.copy(autoAnswerScope = AutoAnswerScope.ALL_QUESTIONS) } },
+                                        label = { Text("所有课堂提问") }
+                                    )
+                                }
+                                Text("自动回答上限：10 分钟内 ${settings.aiAutoLimitPer10Min} 次", fontWeight = FontWeight.Medium)
+                                Slider(
+                                    value = settings.aiAutoLimitPer10Min.toFloat(),
+                                    onValueChange = { value ->
+                                        onUpdateSettings { it.copy(aiAutoLimitPer10Min = value.roundToInt().coerceIn(1, 30)) }
+                                    },
+                                    valueRange = 1f..30f,
+                                    steps = 28
+                                )
+                                Text(
+                                    "面向全班的问题和误报不会再自动花费 AI 额度；达到上限后提醒照常弹出，可在提醒里点「AI 重答」手动发送。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                         Spacer(Modifier.height(8.dp))
                         Text(
                             "请求会自动附带课堂场景规则和语音识别局限：极速模型先给可直接开口的短答，强力模型再补依据与步骤。当前提醒与历史记录仍可圈选题目后重发。",

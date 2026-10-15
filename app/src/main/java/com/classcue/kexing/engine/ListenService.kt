@@ -17,6 +17,7 @@ import com.classcue.kexing.MainActivity
 import com.classcue.kexing.R
 import com.classcue.kexing.model.AppSettings
 import com.classcue.kexing.model.AiTier
+import com.classcue.kexing.model.AutoAnswerScope
 import com.classcue.kexing.model.HistoryEvent
 import com.classcue.kexing.model.TranscriptRecord
 import com.classcue.kexing.model.TranscriptionModelSize
@@ -50,6 +51,7 @@ class ListenService : Service() {
     private var lastAlertKey = ""
     private var identityArmedUntil = 0L
     @Volatile private var latestCueEventId = 0L
+    private var autoAiLimiter: Pair<Int, SlidingWindowLimiter>? = null
     private val aiAnswers = ConcurrentHashMap<Long, ConcurrentHashMap<String, ModelAnswer>>()
     private val aiGenerations = ConcurrentHashMap<Long, AtomicInteger>()
 
@@ -349,7 +351,7 @@ class ListenService : Service() {
     private fun detectCue(text: String) {
         val settings = ClassCueApplication.settingsStore.settings.value
         val now = System.currentTimeMillis()
-        val identityMentioned = mentionsIdentity(text, settings)
+        val identityMentioned = CueClassifier.mentionsIdentity(text, settings.classifierConfig(), null)
         if (identityMentioned) {
             identityArmedUntil = now + settings.followupWindowSeconds * 1_000L
         }
@@ -413,12 +415,31 @@ class ListenService : Service() {
             vibrate(result.risk, settings.vibrationStrength)
         }
 
-        if (settings.aiEnabled && settings.autoAnswer &&
-            result.type in setOf(CueType.DIRECT_QUESTION, CueType.GENERAL_QUESTION)
-        ) {
-            val context = recentTextTail(20)
-            requestAiAnswers(eventId, result, contextWindow, context, settings)
+        if (settings.aiEnabled && settings.autoAnswer && result.type in autoAnswerTypes(settings)) {
+            val limiter = autoAiLimiter(settings)
+            if (limiter.tryAcquire(now)) {
+                val context = recentTextTail(20)
+                requestAiAnswers(eventId, result, contextWindow, context, settings)
+            } else {
+                val waitMinutes = ((limiter.waitMs(now) + 59_999L) / 60_000L).coerceAtLeast(1L)
+                val message = "自动 AI 回答已达上限（10 分钟内 ${settings.aiAutoLimitPer10Min} 次），" +
+                    "约 $waitMinutes 分钟后恢复；需要时可点「AI 重答」手动发送"
+                ClassCueApplication.historyStore.updateAnswer(eventId, message)
+                notifyCue(eventId, result, contextWindow, message, settings, onlyAlertOnce = true)
+            }
         }
+    }
+
+    private fun autoAnswerTypes(settings: AppSettings): Set<CueType> = when (settings.autoAnswerScope) {
+        AutoAnswerScope.DIRECTED_AT_ME -> setOf(CueType.DIRECT_QUESTION)
+        AutoAnswerScope.ALL_QUESTIONS -> setOf(CueType.DIRECT_QUESTION, CueType.GENERAL_QUESTION)
+    }
+
+    @Synchronized
+    private fun autoAiLimiter(settings: AppSettings): SlidingWindowLimiter {
+        val limit = settings.aiAutoLimitPer10Min.coerceIn(1, 30)
+        autoAiLimiter?.let { (current, limiter) -> if (current == limit) return limiter }
+        return SlidingWindowLimiter(limit, AUTO_AI_WINDOW_MS).also { autoAiLimiter = limit to it }
     }
 
     private fun retryAi(intent: Intent) {
@@ -565,15 +586,6 @@ class ListenService : Service() {
         recentUtterances.map { it.text }.takeLast(limit).joinToString("\n")
     }
 
-    private fun mentionsIdentity(text: String, settings: AppSettings): Boolean {
-        val tokens = buildList {
-            if (settings.displayName.isNotBlank()) add(settings.displayName)
-            if (settings.studentId.isNotBlank()) add(settings.studentId)
-            addAll(settings.aliases)
-        }
-        return tokens.any(text::contains)
-    }
-
     private fun notifyCue(
         eventId: Long,
         result: CueResult,
@@ -612,6 +624,7 @@ class ListenService : Service() {
                 when {
                     answer.isNullOrBlank() -> "检测到课堂提醒 · 点开确认老师原话"
                     answer.contains("正在调用") -> "AI 正在回答 · 极速模型会先显示"
+                    answer.contains("已达上限") -> "自动 AI 已达频率上限 · 可手动重答"
                     answer.contains("未配置") || answer.contains("未能返回") -> "AI 回答失败 · 点开检查设置"
                     else -> "AI 回答已生成 · 点开查看"
                 }
@@ -745,6 +758,7 @@ class ListenService : Service() {
         private const val NOTIFICATION_LISTENING = 2001
         private const val NOTIFICATION_ACTIVE_CUE = 2100
         private const val WAKE_LOCK_TIMEOUT_MS = 8L * 60L * 60L * 1_000L
+        private const val AUTO_AI_WINDOW_MS = 10L * 60L * 1_000L
     }
 
     private data class ModelAnswer(

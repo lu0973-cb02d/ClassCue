@@ -91,11 +91,28 @@ final class ClassroomCueLexicon {
             "正确还是错误", "对还是错"
     );
 
+    /**
+     * Phrases that show the teacher is addressing students and expects someone to answer.
+     * A generic question only becomes a "whole-class question" alert when it comes with one of
+     * these or with a call/roll-call expression; rhetorical lecture questions such as
+     * "这个公式是怎么推导出来的" no longer alert on their own.
+     */
+    static final List<String> AUDIENCE_CUES = terms(
+            "谁来", "谁能", "谁会", "谁想", "谁有", "谁愿意", "谁知道", "谁举手",
+            "哪位同学", "哪个同学", "哪位来", "有没有同学", "有没有人", "有人知道", "有人能",
+            "请一位同学", "请个同学", "请同学", "请大家", "请你", "你来", "你说说", "你觉得",
+            "你认为", "你们觉得", "你们认为", "你们说说", "你们怎么看", "你们想一想",
+            "大家想一想", "大家想想", "大家思考", "大家说说", "大家说一下", "大家怎么看",
+            "大家觉得", "大家讨论", "大家回答", "大家一起回答", "同学们想一想", "同学们说说",
+            "同学们觉得", "同学们思考", "举手回答", "来回答", "起来回答", "上来", "到黑板"
+    );
+
     private ClassroomCueLexicon() {}
 
     static int size() {
         LinkedHashSet<String> unique = new LinkedHashSet<>(CALL_CUES);
         unique.addAll(QUESTION_CUES);
+        unique.addAll(AUDIENCE_CUES);
         return unique.size();
     }
 

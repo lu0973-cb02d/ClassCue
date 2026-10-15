@@ -63,10 +63,37 @@ class CueClassifierTest {
     }
 
     @Test
-    fun generalQuestionAlertsInAllMode() {
-        val result = CueClassifier.classify("这个公式为什么要除以二", config(keywords = emptyList()))
+    fun studentDirectedQuestionAlertsInAllMode() {
+        val result = CueClassifier.classify("大家想一想这个公式为什么要除以二", config(keywords = emptyList()))
         assertTrue(result.shouldAlert())
         assertEquals(CueType.GENERAL_QUESTION, result.type)
+        assertTrue(CueClassifier.classify("谁能说一下这个公式为什么要除以二", config(keywords = emptyList())).shouldAlert())
+    }
+
+    @Test
+    fun rhetoricalLectureQuestionNeedsTheMostSensitiveSetting() {
+        val lectureLines = listOf(
+            "这个公式为什么要除以二",
+            "我们来看一下这个公式是怎么推导出来的",
+            "那么什么是边际效用呢",
+            "为什么这么说呢因为成本是沉没的",
+            "有没有发现这两个曲线的形状很像"
+        )
+        lectureLines.forEach { line ->
+            assertFalse(line, CueClassifier.classify(line, config(keywords = emptyList())).shouldAlert())
+            assertFalse(line, CueClassifier.classify(line, config(keywords = emptyList(), sensitivity = 4)).shouldAlert())
+        }
+        val mostSensitive = CueClassifier.classify(lectureLines.first(), config(keywords = emptyList(), sensitivity = 5))
+        assertEquals(CueType.GENERAL_QUESTION, mostSensitive.type)
+    }
+
+    @Test
+    fun singleCharacterAliasNeedsDirectAddress() {
+        val single = config(keywords = emptyList(), aliases = listOf("明"))
+        // "说明" contains the alias character but nobody is being called on.
+        assertFalse(CueClassifier.classify("说明一下为什么需求曲线向下倾斜", single.copyWithName("")).shouldAlert())
+        assertFalse(CueClassifier.mentionsIdentity("这说明了什么问题", single.copyWithName(""), null))
+        assertTrue(CueClassifier.mentionsIdentity("明同学你来回答", single.copyWithName(""), null))
     }
 
     @Test
@@ -105,4 +132,8 @@ class CueClassifierTest {
         assertTrue(CueClassifier.looksLikeQuestion("请比较一下两种算法的优缺点"))
         assertFalse(CueClassifier.looksLikeQuestion("今天继续学习宏观经济学第三章"))
     }
+
+    private fun ClassifierConfig.copyWithName(name: String) = ClassifierConfig(
+        name, "", aliases, customKeywords, sensitivity, detectRollCall, detectQuestions, detectGeneralQuestions
+    )
 }

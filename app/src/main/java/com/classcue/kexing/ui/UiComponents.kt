@@ -135,7 +135,7 @@ internal fun cueTitle(type: CueType): String = when (type) {
 }
 
 internal fun detectionModeLabel(mode: DetectionMode): String = when (mode) {
-    DetectionMode.ALL -> "点名、问我、面向全班的问题"
+    DetectionMode.ALL -> "点名、问我、老师面向学生的提问"
     DetectionMode.NAMED_ONLY -> "只提醒点名和明确问我"
     DetectionMode.ROLL_CALL_ONLY -> "只提醒点名"
 }
@@ -145,7 +145,7 @@ internal fun sensitivityLabel(value: Int): String = when (value) {
     2 -> "偏稳健"
     3 -> "平衡（推荐）"
     4 -> "偏灵敏"
-    else -> "最灵敏，可能增加误报"
+    else -> "最灵敏：讲课中的设问也会提醒，误报较多"
 }
 
 internal fun audioInputStrategyLabel(strategy: AudioInputStrategy): String = when (strategy) {

@@ -4,6 +4,7 @@ import android.content.Context
 import com.classcue.kexing.model.AppSettings
 import com.classcue.kexing.model.AiProfile
 import com.classcue.kexing.model.AiTier
+import com.classcue.kexing.model.AutoAnswerScope
 import com.classcue.kexing.model.DetectionMode
 import com.classcue.kexing.model.TranscriptionModelSize
 import com.classcue.kexing.engine.AudioInputStrategy
@@ -58,6 +59,12 @@ class SettingsStore(context: Context) {
         ).orEmpty().ifBlank { AppSettings.DEFAULT_WATCH_FINGERPRINT },
         vibrationStrength = prefs.getInt("vibration_strength", 3).coerceIn(1, 5),
         autoAnswer = prefs.getBoolean("auto_answer", true),
+        autoAnswerScope = runCatching {
+            AutoAnswerScope.valueOf(
+                prefs.getString("auto_answer_scope", AutoAnswerScope.DIRECTED_AT_ME.name).orEmpty()
+            )
+        }.getOrDefault(AutoAnswerScope.DIRECTED_AT_ME),
+        aiAutoLimitPer10Min = prefs.getInt("ai_auto_limit", AppSettings.DEFAULT_AI_AUTO_LIMIT).coerceIn(1, 30),
         aiEnabled = prefs.getBoolean("ai_enabled", false),
         aiProfiles = parseProfiles(prefs.getString("ai_profiles", null)).ifEmpty {
             listOf(
@@ -94,6 +101,8 @@ class SettingsStore(context: Context) {
             .putString("wear_engine_watch_fingerprint", value.wearEngineWatchFingerprint)
             .putInt("vibration_strength", value.vibrationStrength)
             .putBoolean("auto_answer", value.autoAnswer)
+            .putString("auto_answer_scope", value.autoAnswerScope.name)
+            .putInt("ai_auto_limit", value.aiAutoLimitPer10Min)
             .putBoolean("ai_enabled", value.aiEnabled)
             .putString("ai_profiles", profilesJson(value.aiProfiles))
             .putString("ai_prompt", value.aiSystemPrompt)

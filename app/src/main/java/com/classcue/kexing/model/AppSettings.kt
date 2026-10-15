@@ -7,6 +7,9 @@ enum class DetectionMode { ALL, NAMED_ONLY, ROLL_CALL_ONLY }
 enum class AiTier { FAST, STRONG }
 enum class TranscriptionModelSize { SMALL, MEDIUM, LARGE }
 
+/** Which alerts send the classroom text to AI automatically (manual re-asks are always allowed). */
+enum class AutoAnswerScope { DIRECTED_AT_ME, ALL_QUESTIONS }
+
 data class AiProfile(
     val id: String,
     val tier: AiTier,
@@ -47,6 +50,9 @@ data class AppSettings(
     val wearEngineWatchFingerprint: String = DEFAULT_WATCH_FINGERPRINT,
     val vibrationStrength: Int = 3,
     val autoAnswer: Boolean = true,
+    val autoAnswerScope: AutoAnswerScope = AutoAnswerScope.DIRECTED_AT_ME,
+    /** Upper bound on automatic AI requests per 10 minutes, to cap cost when alerts misfire. */
+    val aiAutoLimitPer10Min: Int = DEFAULT_AI_AUTO_LIMIT,
     val aiEnabled: Boolean = false,
     val aiProfiles: List<AiProfile> = listOf(AiProfile.defaultFast()),
     val aiSystemPrompt: String = DEFAULT_PROMPT,
@@ -74,6 +80,7 @@ data class AppSettings(
             "我点一个", "我找一位", "抽一位同学"
         )
         const val DEFAULT_PROMPT = """根据老师原话与课堂上下文回答。答案应准确、自然、适合直接口头表达；有多个问题时按“问题1/回答1”编号。信息不足时明确说明，不要编造。"""
+        const val DEFAULT_AI_AUTO_LIMIT = 6
         const val DEFAULT_WATCH_PACKAGE = "com.classcue.kexing.watch"
         const val DEFAULT_WATCH_FINGERPRINT = "0000000000000000000000000000000000000000000000000000000000000000"
     }
