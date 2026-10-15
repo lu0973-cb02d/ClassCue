@@ -30,6 +30,7 @@ import com.classcue.kexing.model.ArchiveFilter
 import com.classcue.kexing.model.HistoryArchiveSnapshot
 import com.classcue.kexing.model.LessonSummary
 import com.classcue.kexing.ui.ClassCueRoot
+import com.classcue.kexing.ui.SEARCH_LIMIT
 import com.classcue.kexing.ui.ClassCueTheme
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -118,6 +119,14 @@ class MainActivity : ComponentActivity() {
                     },
                     onExportLessonMarkdown = { lesson -> exportLessonMarkdown(lesson) },
                     onDeleteLesson = { lesson -> deleteLesson(lesson) },
+                    loadLesson = { lesson ->
+                        withContext(Dispatchers.IO) {
+                            ClassCueApplication.historyStore.archiveSnapshot(lesson).lessons.firstOrNull()
+                        }
+                    },
+                    searchHistory = { query ->
+                        withContext(Dispatchers.IO) { ClassCueApplication.historyStore.search(query, SEARCH_LIMIT) }
+                    },
                     onOpenNotificationSettings = { openNotificationSettings() },
                     onOpenLiveUpdateSettings = { openLiveUpdateSettings() },
                     onOpenBatterySettings = { openBatterySettings() }

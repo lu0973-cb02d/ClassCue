@@ -18,6 +18,19 @@ data class LessonSummary(
     val eventCount: Int
 )
 
+/** One search result: a transcript line or an alert (whose text or AI answer matched). */
+data class SearchHit(
+    val kind: Kind,
+    val id: Long,
+    val createdAt: Long,
+    val text: String,
+    val answer: String?,
+    val courseName: String,
+    val recordingName: String?
+) {
+    enum class Kind { TRANSCRIPT, EVENT }
+}
+
 data class LessonArchive(
     val courseName: String,
     val recordingName: String?,

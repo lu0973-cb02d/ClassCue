@@ -106,6 +106,20 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all { test ->
+                // Screenshot tests render Compose screens with Robolectric; they are slower and
+                // download an Android runtime, so they only run with -Pscreenshots.
+                if (!project.hasProperty("screenshots")) test.exclude("**/*ScreenshotTest*")
+                providers.gradleProperty("robolectricRepo").orNull?.let {
+                    test.systemProperty("robolectric.dependency.repo.url", it)
+                }
+                project.findProperty("screenshotDir")?.let { test.systemProperty("classcue.screenshotDir", it.toString()) }
+            }
+        }
+    }
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
         jniLibs.pickFirsts += "**/libc++_shared.so"
@@ -133,6 +147,11 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     // Same Han-Latin rules as android.icu, so name-pronunciation tests run on the JVM.
     testImplementation("com.ibm.icu:icu4j:74.2")
+    // Runs the history SQL (migration, lesson upserts, search) against a real SQLite engine.
+    testImplementation("org.xerial:sqlite-jdbc:3.46.1.3")
+    testImplementation(composeBom)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("org.robolectric:robolectric:4.17")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")

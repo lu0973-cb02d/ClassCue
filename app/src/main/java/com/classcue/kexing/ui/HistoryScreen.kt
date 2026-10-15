@@ -54,6 +54,20 @@ import com.classcue.kexing.model.RecordingInfo
 import com.classcue.kexing.model.TranscriptRecord
 import java.io.File
 import kotlin.math.roundToInt
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
+import com.classcue.kexing.model.LessonArchive
+import com.classcue.kexing.model.SearchHit
+import kotlinx.coroutines.delay
 
 internal enum class HistoryView { LESSONS, EVENTS, TRANSCRIPT, RECORDINGS }
 
@@ -73,9 +87,24 @@ internal fun HistoryScreen(
     onExportAllMarkdown: () -> Unit,
     onExportCourseMarkdown: (String) -> Unit,
     onExportLessonMarkdown: (LessonSummary) -> Unit,
-    onDeleteLesson: (LessonSummary) -> Unit
+    onDeleteLesson: (LessonSummary) -> Unit,
+    aiEnabled: Boolean,
+    loadLesson: suspend (LessonSummary) -> LessonArchive?,
+    searchHistory: suspend (String) -> List<SearchHit>,
+    initialQuery: String = ""
 ) {
     var view by rememberSaveable { mutableStateOf(HistoryView.LESSONS) }
+    var openedLesson by remember { mutableStateOf<OpenedLesson?>(null) }
+    var query by rememberSaveable { mutableStateOf(initialQuery) }
+    var searchResults by remember { mutableStateOf<List<SearchHit>?>(null) }
+    LaunchedEffect(query) {
+        if (query.isBlank()) {
+            searchResults = null
+        } else {
+            delay(300)
+            searchResults = searchHistory(query.trim())
+        }
+    }
     var confirmDelete by remember { mutableStateOf(false) }
     var lessonToDelete by remember { mutableStateOf<LessonSummary?>(null) }
     var recordingToDelete by remember { mutableStateOf<RecordingInfo?>(null) }
@@ -99,7 +128,11 @@ internal fun HistoryScreen(
             title = { Text("删除本节课文字？") },
             text = { Text("将删除本节课的转写、提醒和 AI 回答；对应 WAV 录音不会同时删除。") },
             confirmButton = {
-                TextButton(onClick = { onDeleteLesson(lesson); lessonToDelete = null }) { Text("删除文字") }
+                TextButton(onClick = {
+                    onDeleteLesson(lesson)
+                    if (openedLesson?.summary == lesson) openedLesson = null
+                    lessonToDelete = null
+                }) { Text("删除文字") }
             },
             dismissButton = { TextButton(onClick = { lessonToDelete = null }) { Text("取消") } }
         )
@@ -115,11 +148,66 @@ internal fun HistoryScreen(
             dismissButton = { TextButton(onClick = { recordingToDelete = null }) { Text("取消") } }
         )
     }
+    openedLesson?.let { opened ->
+        Column(modifier.fillMaxSize()) {
+            LessonDetailScreen(
+                summary = opened.summary,
+                focusAt = opened.focusAt,
+                recording = recordings.firstOrNull { it.matchesLesson(opened.summary.recordingName) },
+                loadLesson = loadLesson,
+                aiEnabled = aiEnabled,
+                onBack = { openedLesson = null },
+                onExport = { onExportLessonMarkdown(opened.summary) },
+                onDelete = { lessonToDelete = opened.summary },
+                onRetryEvent = onRetryEvent
+            )
+        }
+        return
+    }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 28.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        item {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it.take(60) },
+                placeholder = { Text("搜索课堂文字、提醒和 AI 回答") },
+                leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                trailingIcon = {
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { query = "" }) { Icon(Icons.Rounded.Close, contentDescription = "清除") }
+                    }
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        val results = searchResults
+        if (query.isNotBlank()) {
+            if (results == null) {
+                item { Text("正在搜索…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            } else if (results.isEmpty()) {
+                item { EmptyCard("没有找到“${query.trim()}”", "搜索范围包括所有课次的转写、提醒原话和 AI 回答。") }
+            } else {
+                item {
+                    Text(
+                        if (results.size >= SEARCH_LIMIT) "显示最近 $SEARCH_LIMIT 条结果" else "共 ${results.size} 条结果",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                items(results, key = { "${it.kind}${it.id}" }) { hit ->
+                    SearchHitCard(hit, query.trim()) {
+                        lessonSummaries.firstOrNull { it.contains(hit) }?.let { summary ->
+                            openedLesson = OpenedLesson(summary, hit.createdAt)
+                        }
+                    }
+                }
+            }
+            return@LazyColumn
+        }
         item {
             SectionCard("Markdown 导出", "按课次、课程或全部学期归档") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -172,6 +260,7 @@ internal fun HistoryScreen(
             items(lessonSummaries, key = { "${it.courseName}|${it.recordingName}|${it.startedAt}" }) { lesson ->
                 LessonSummaryCard(
                     lesson = lesson,
+                    onOpen = { openedLesson = OpenedLesson(lesson, null) },
                     onExport = { onExportLessonMarkdown(lesson) },
                     onDelete = { lessonToDelete = lesson }
                 )
@@ -236,12 +325,13 @@ internal fun TranscriptCard(record: TranscriptRecord) {
 @Composable
 internal fun LessonSummaryCard(
     lesson: LessonSummary,
+    onOpen: () -> Unit,
     onExport: () -> Unit,
     onDelete: () -> Unit
 ) {
     val courseLabel = lesson.courseName.trim().ifEmpty { "未命名课程" }
     val durationMs = (lesson.endedAt - lesson.startedAt).coerceAtLeast(0L)
-    Card(shape = RoundedCornerShape(18.dp)) {
+    Card(shape = RoundedCornerShape(18.dp), modifier = Modifier.clickable(onClick = onOpen)) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -266,10 +356,15 @@ internal fun LessonSummaryCard(
             )
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(onClick = onExport, modifier = Modifier.weight(1f)) {
+                FilledTonalButton(onClick = onOpen, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Rounded.PlayCircle, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("查看与回放")
+                }
+                OutlinedButton(onClick = onExport) {
                     Icon(Icons.Rounded.Save, null)
                     Spacer(Modifier.width(6.dp))
-                    Text("导出 Markdown")
+                    Text("导出")
                 }
                 TextButton(onClick = onDelete) {
                     Icon(Icons.Rounded.Delete, null)
@@ -362,5 +457,91 @@ internal fun RecordingCard(
                 Text("删除录音")
             }
         }
+    }
+}
+
+internal const val SEARCH_LIMIT = 200
+
+private data class OpenedLesson(val summary: LessonSummary, val focusAt: Long?)
+
+/** Whether a recording file belongs to the lesson recorded as [recordingName] (any audio format). */
+internal fun RecordingInfo.matchesLesson(recordingName: String?): Boolean {
+    val base = recordingName?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: return false
+    return file.nameWithoutExtension == base
+}
+
+private fun LessonSummary.contains(hit: SearchHit): Boolean {
+    if (courseName != hit.courseName) return false
+    return if (hit.recordingName.isNullOrBlank()) {
+        recordingName.isNullOrBlank() && startedAt / LEGACY_DAY_MS_UI == hit.createdAt / LEGACY_DAY_MS_UI
+    } else {
+        recordingName == hit.recordingName
+    }
+}
+
+private const val LEGACY_DAY_MS_UI = 86_400_000L
+
+@Composable
+private fun SearchHitCard(hit: SearchHit, query: String, onOpen: () -> Unit) {
+    val isAlert = hit.kind == SearchHit.Kind.EVENT
+    Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (isAlert) "提醒" else "转写",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (isAlert) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    hit.courseName.ifBlank { "未命名课程" },
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(formatDate(hit.createdAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(highlight(snippet(hit.text, query), query), style = MaterialTheme.typography.bodyMedium)
+            val answer = hit.answer
+            if (isAlert && !answer.isNullOrBlank() && answer.contains(query, ignoreCase = true)) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    highlight("AI：" + snippet(answer, query), query),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+/** Keeps the part of a long text around the first match so the hit is visible in the card. */
+internal fun snippet(text: String, query: String, radius: Int = 40): String {
+    val flat = text.replace('\n', ' ')
+    val index = flat.indexOf(query, ignoreCase = true)
+    if (index < 0 || flat.length <= radius * 2 + query.length) return flat
+    val start = (index - radius).coerceAtLeast(0)
+    val end = (index + query.length + radius).coerceAtMost(flat.length)
+    return (if (start > 0) "…" else "") + flat.substring(start, end) + (if (end < flat.length) "…" else "")
+}
+
+@Composable
+private fun highlight(text: String, query: String): AnnotatedString = buildAnnotatedString {
+    append(text)
+    if (query.isBlank()) return@buildAnnotatedString
+    val style = SpanStyle(
+        background = MaterialTheme.colorScheme.tertiaryContainer,
+        color = MaterialTheme.colorScheme.onTertiaryContainer,
+        fontWeight = FontWeight.SemiBold
+    )
+    var from = 0
+    while (true) {
+        val index = text.indexOf(query, from, ignoreCase = true)
+        if (index < 0) break
+        addStyle(style, index, index + query.length)
+        from = index + query.length
     }
 }

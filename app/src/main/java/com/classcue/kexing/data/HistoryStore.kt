@@ -12,6 +12,7 @@ import com.classcue.kexing.model.ArchiveFilter
 import com.classcue.kexing.model.HistoryArchiveSnapshot
 import com.classcue.kexing.model.HistoryEvent
 import com.classcue.kexing.model.LessonSummary
+import com.classcue.kexing.model.SearchHit
 import com.classcue.kexing.model.TranscriptRecord
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -48,7 +49,7 @@ internal fun buildLessonSummarySql(
 class HistoryStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
     companion object {
         private const val DATABASE_NAME = "classcue_history.db"
-        private const val DATABASE_VERSION = 3
+        private const val DATABASE_VERSION = HistorySchema.DATABASE_VERSION
         private const val EVENT_PREVIEW_LIMIT = "300"
         private const val TRANSCRIPT_PREVIEW_LIMIT = "2000"
     }
@@ -80,6 +81,7 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, 
         )
         createTranscriptTable(db)
         createArchiveIndexes(db)
+        createLessonTable(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -89,6 +91,36 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, 
             addColumnIfMissing(db, "transcripts", "course_name", "TEXT NOT NULL DEFAULT ''")
             createArchiveIndexes(db)
         }
+        if (oldVersion < 4) {
+            createLessonTable(db)
+            db.execSQL(HistorySchema.REBUILD_ALL_LESSONS)
+        }
+    }
+
+    private fun createLessonTable(db: SQLiteDatabase) {
+        db.execSQL(HistorySchema.CREATE_LESSONS)
+        db.execSQL(HistorySchema.CREATE_LESSONS_INDEX)
+    }
+
+    private fun SQLiteDatabase.addToLesson(
+        courseName: String,
+        recordingName: String?,
+        createdAt: Long,
+        transcriptDelta: Int,
+        eventDelta: Int
+    ) {
+        execSQL(
+            HistorySchema.UPSERT_LESSON,
+            arrayOf<Any?>(
+                courseName,
+                HistorySchema.lessonKey(recordingName, createdAt),
+                recordingName,
+                createdAt,
+                createdAt,
+                transcriptDelta,
+                eventDelta
+            )
+        )
     }
 
     private fun createTranscriptTable(db: SQLiteDatabase) {
@@ -139,7 +171,16 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, 
             put("recording_offset_ms", normalized.recordingOffsetMs)
             put("course_name", normalized.courseName)
         }
-        val id = writableDatabase.insertOrThrow("events", null, values)
+        val db = writableDatabase
+        db.beginTransaction()
+        val id = try {
+            db.insertOrThrow("events", null, values).also {
+                db.addToLesson(normalized.courseName, normalized.recordingName, normalized.createdAt, 0, 1)
+                db.setTransactionSuccessful()
+            }
+        } finally {
+            db.endTransaction()
+        }
         _events.value = (listOf(normalized.copy(id = id)) + _events.value).take(EVENT_PREVIEW_LIMIT.toInt())
         updateLessonSummary(normalized.courseName, normalized.recordingName, normalized.createdAt, eventDelta = 1)
         return id
@@ -164,16 +205,25 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, 
             recordingName = record.recordingName?.trim()?.takeIf { it.isNotEmpty() },
             courseName = record.courseName.trim()
         )
-        val id = writableDatabase.insertOrThrow(
-            "transcripts",
-            null,
-            ContentValues().apply {
-                put("created_at", normalized.createdAt)
-                put("text", normalized.text)
-                put("recording_name", normalized.recordingName)
-                put("course_name", normalized.courseName)
+        val db = writableDatabase
+        db.beginTransaction()
+        val id = try {
+            db.insertOrThrow(
+                "transcripts",
+                null,
+                ContentValues().apply {
+                    put("created_at", normalized.createdAt)
+                    put("text", normalized.text)
+                    put("recording_name", normalized.recordingName)
+                    put("course_name", normalized.courseName)
+                }
+            ).also {
+                db.addToLesson(normalized.courseName, normalized.recordingName, normalized.createdAt, 1, 0)
+                db.setTransactionSuccessful()
             }
-        )
+        } finally {
+            db.endTransaction()
+        }
         _transcripts.value = (listOf(normalized.copy(id = id)) + _transcripts.value)
             .take(TRANSCRIPT_PREVIEW_LIMIT.toInt())
         updateLessonSummary(normalized.courseName, normalized.recordingName, normalized.createdAt, transcriptDelta = 1)
@@ -215,13 +265,21 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, 
             )
         )
         var removed = 0
-        writableDatabase.beginTransaction()
+        val lessonArgs = arrayOf<Any?>(
+            courseName.trim(),
+            HistorySchema.lessonKey(recordingName, fromInclusive ?: 0L)
+        )
+        val db = writableDatabase
+        db.beginTransaction()
         try {
-            removed += writableDatabase.delete("events", where.selection, where.args)
-            removed += writableDatabase.delete("transcripts", where.selection, where.args)
-            writableDatabase.setTransactionSuccessful()
+            removed += db.delete("events", where.selection, where.args)
+            removed += db.delete("transcripts", where.selection, where.args)
+            // Recompute the lesson row from whatever rows remain (normally none).
+            db.execSQL(HistorySchema.DELETE_ONE_LESSON, lessonArgs)
+            db.execSQL(HistorySchema.REBUILD_ONE_LESSON, lessonArgs)
+            db.setTransactionSuccessful()
         } finally {
-            writableDatabase.endTransaction()
+            db.endTransaction()
         }
         reload()
         return removed
@@ -239,6 +297,7 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, 
     fun deleteAll() {
         writableDatabase.delete("events", null, null)
         writableDatabase.delete("transcripts", null, null)
+        writableDatabase.delete("lessons", null, null)
         reload()
     }
 
@@ -266,7 +325,45 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, 
     }
 
     private fun reloadLessonSummaries() {
-        _lessonSummaries.value = queryLessonSummariesInternal(ArchiveFilter(), limit = null, offset = 0)
+        val result = mutableListOf<LessonSummary>()
+        readableDatabase.rawQuery(HistorySchema.SELECT_LESSONS, null).use { cursor ->
+            while (cursor.moveToNext()) {
+                result += LessonSummary(
+                    courseName = cursor.getString(0).orEmpty(),
+                    recordingName = if (cursor.isNull(1)) null else cursor.getString(1),
+                    startedAt = cursor.getLong(2),
+                    endedAt = cursor.getLong(3),
+                    transcriptCount = cursor.getInt(4),
+                    eventCount = cursor.getInt(5)
+                )
+            }
+        }
+        _lessonSummaries.value = result
+    }
+
+    /** Searches transcripts, alerts and AI answers; newest first. */
+    @Synchronized
+    fun search(query: String, limit: Int = 200): List<SearchHit> {
+        if (query.isBlank()) return emptyList()
+        val pattern = HistorySchema.likePattern(query)
+        val hits = mutableListOf<SearchHit>()
+        readableDatabase.rawQuery(
+            HistorySchema.SEARCH,
+            arrayOf(pattern, pattern, pattern, limit.coerceIn(1, 1000).toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                hits += SearchHit(
+                    kind = if (cursor.getString(0) == "E") SearchHit.Kind.EVENT else SearchHit.Kind.TRANSCRIPT,
+                    id = cursor.getLong(1),
+                    createdAt = cursor.getLong(2),
+                    text = cursor.getString(3).orEmpty(),
+                    answer = if (cursor.isNull(4)) null else cursor.getString(4),
+                    courseName = cursor.getString(5).orEmpty(),
+                    recordingName = if (cursor.isNull(6)) null else cursor.getString(6)
+                )
+            }
+        }
+        return hits
     }
 
     private fun updateLessonSummary(

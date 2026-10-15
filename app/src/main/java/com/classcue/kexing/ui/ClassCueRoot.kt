@@ -33,7 +33,9 @@ import com.classcue.kexing.engine.SessionPhase
 import com.classcue.kexing.engine.SessionState
 import com.classcue.kexing.model.AppSettings
 import com.classcue.kexing.model.HistoryEvent
+import com.classcue.kexing.model.LessonArchive
 import com.classcue.kexing.model.LessonSummary
+import com.classcue.kexing.model.SearchHit
 import com.classcue.kexing.model.RecordingInfo
 import com.classcue.kexing.model.TranscriptRecord
 import java.io.File
@@ -76,6 +78,8 @@ fun ClassCueRoot(
     onExportCourseMarkdown: (String) -> Unit,
     onExportLessonMarkdown: (LessonSummary) -> Unit,
     onDeleteLesson: (LessonSummary) -> Unit,
+    loadLesson: suspend (LessonSummary) -> LessonArchive?,
+    searchHistory: suspend (String) -> List<SearchHit>,
     onOpenNotificationSettings: () -> Unit,
     onOpenLiveUpdateSettings: () -> Unit,
     onOpenBatterySettings: () -> Unit
@@ -162,7 +166,10 @@ fun ClassCueRoot(
                 onExportAllMarkdown = onExportAllMarkdown,
                 onExportCourseMarkdown = onExportCourseMarkdown,
                 onExportLessonMarkdown = onExportLessonMarkdown,
-                onDeleteLesson = onDeleteLesson
+                onDeleteLesson = onDeleteLesson,
+                aiEnabled = settings.aiEnabled,
+                loadLesson = loadLesson,
+                searchHistory = searchHistory
             )
             Destination.SETTINGS -> SettingsScreen(
                 modifier = Modifier.padding(padding),
