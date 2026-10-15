@@ -131,6 +131,8 @@ dependencies {
     implementation("commons-io:commons-io:2.18.0")
     implementation("com.huawei.hms:wearengine:5.0.3.304")
     testImplementation("junit:junit:4.13.2")
+    // Same Han-Latin rules as android.icu, so name-pronunciation tests run on the JVM.
+    testImplementation("com.ibm.icu:icu4j:74.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")

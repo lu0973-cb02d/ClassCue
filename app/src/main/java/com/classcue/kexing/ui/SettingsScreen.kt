@@ -360,6 +360,18 @@ internal fun SettingsScreen(
                 }
                 Spacer(Modifier.height(8.dp))
                 SettingSwitchRow(
+                    title = "省电识别",
+                    subtitle = "中/大档改用 2 个线程，发热和耗电更低；较旧的手机可能出现识别落后提示",
+                    checked = settings.powerSavingRecognition,
+                    onChecked = { enabled -> onUpdateSettings { it.copy(powerSavingRecognition = enabled) } }
+                )
+                SettingSwitchRow(
+                    title = "姓名热词（实验）",
+                    subtitle = "中/大档识别时更倾向写出你的姓名和称呼；称呼里有模型不认识的字时自动跳过。读音相近的名字无论是否开启都能识别",
+                    checked = settings.nameHotwordsEnabled,
+                    onChecked = { enabled -> onUpdateSettings { it.copy(nameHotwordsEnabled = enabled) } }
+                )
+                SettingSwitchRow(
                     title = "教室远场增强",
                     subtitle = "仅增强送入离线识别器的声音；原始 WAV 保持不变，便于复核",
                     checked = settings.farFieldEnhancementEnabled,

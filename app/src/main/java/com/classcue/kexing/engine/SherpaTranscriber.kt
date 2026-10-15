@@ -28,6 +28,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 class SherpaTranscriber(
     private val context: Context,
     private val secondPass: Boolean,
+    /** Names and forms of address to favour; empty keeps plain greedy decoding. */
+    private val nameHotwords: List<String> = emptyList(),
+    private val numThreads: Int = 4,
     private val onStatus: (String) -> Unit,
     private val onReady: () -> Unit,
     private val onPartial: (String) -> Unit,
@@ -42,6 +45,7 @@ class SherpaTranscriber(
         private const val DRAIN_TIMEOUT_MS = 15_000L
         /** Silence fed before inputFinished() so the last frames reach the decoder. */
         private const val TAIL_PADDING_SAMPLES = (SAMPLE_RATE * 66) / 100
+        private const val HOTWORDS_SCORE = 2.0f
     }
 
     private val running = AtomicBoolean(false)
@@ -98,10 +102,19 @@ class SherpaTranscriber(
             if (!running.get()) return
 
             onStatus(if (secondPass) "正在加载大档两遍识别模型…" else "正在加载中档流式模型…")
-            online = createOnlineRecognizer(streamingDir)
+            val hotwords = if (nameHotwords.isEmpty()) emptyList() else {
+                NameHotwords.build(nameHotwords, NameHotwords.readVocabulary(File(streamingDir, "tokens.txt")))
+            }
+            online = createOnlineRecognizer(streamingDir, useHotwords = hotwords.isNotEmpty())
             offline = accurateDir?.let(::createOfflineRecognizer)
             onReady()
-            processAudio(online, offline)
+            if (nameHotwords.isNotEmpty()) {
+                onStatus(
+                    if (hotwords.isEmpty()) "姓名热词未启用：称呼里有模型不认识的字"
+                    else "已启用 ${hotwords.size} 个姓名热词"
+                )
+            }
+            processAudio(online, offline, hotwords)
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
         } catch (error: Throwable) {
@@ -133,8 +146,8 @@ class SherpaTranscriber(
         }
     }
 
-    private fun processAudio(online: OnlineRecognizer, offline: OfflineRecognizer?) {
-        val stream = online.createStream()
+    private fun processAudio(online: OnlineRecognizer, offline: OfflineRecognizer?, hotwords: List<String>) {
+        val stream = if (hotwords.isEmpty()) online.createStream() else online.createStream(hotwords.joinToString("/"))
         val utterance = ArrayList<FloatArray>()
         var previousPartial = ""
         try {
@@ -222,7 +235,7 @@ class SherpaTranscriber(
         }
     }
 
-    private fun createOnlineRecognizer(directory: File): OnlineRecognizer {
+    private fun createOnlineRecognizer(directory: File, useHotwords: Boolean): OnlineRecognizer {
         val config = OnlineRecognizerConfig(
             featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
             modelConfig = OnlineModelConfig(
@@ -232,7 +245,7 @@ class SherpaTranscriber(
                     joiner = File(directory, "joiner.int8.onnx").absolutePath
                 ),
                 tokens = File(directory, "tokens.txt").absolutePath,
-                numThreads = 4
+                numThreads = numThreads
             ),
             endpointConfig = EndpointConfig(
                 rule1 = EndpointRule(false, 2.0f, 0.0f),
@@ -244,6 +257,14 @@ class SherpaTranscriber(
             ),
             enableEndpoint = true
         )
+        if (useHotwords) {
+            // Hotwords only take effect with beam search. Measured on the model's test clips,
+            // four active paths cost about 5-10 % more decoding time than greedy search.
+            config.decodingMethod = "modified_beam_search"
+            config.maxActivePaths = 4
+            config.hotwordsScore = HOTWORDS_SCORE
+            config.modelConfig.modelingUnit = "cjkchar"
+        }
         return OnlineRecognizer(config = config)
     }
 
@@ -255,7 +276,7 @@ class SherpaTranscriber(
                     model = File(directory, "model.int8.onnx").absolutePath
                 ),
                 tokens = File(directory, "tokens.txt").absolutePath,
-                numThreads = 4,
+                numThreads = numThreads,
                 modelingUnit = "cjkchar"
             )
         )

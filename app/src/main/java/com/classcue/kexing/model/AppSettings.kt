@@ -41,6 +41,10 @@ data class AppSettings(
     val transcriptionModelSize: TranscriptionModelSize = TranscriptionModelSize.MEDIUM,
     val audioInputStrategy: AudioInputStrategy = AudioInputStrategy.AUTO,
     val farFieldEnhancementEnabled: Boolean = true,
+    /** Experimental: bias the medium/large streaming recognizer toward the user's name. */
+    val nameHotwordsEnabled: Boolean = false,
+    /** Use 2 recognition threads instead of 4 to reduce heat and battery drain. */
+    val powerSavingRecognition: Boolean = false,
     val phoneVibrationEnabled: Boolean = true,
     /** Send cue/answer messages to the companion Lite Wearable app over Wear Engine. */
     val wearEngineEnabled: Boolean = true,

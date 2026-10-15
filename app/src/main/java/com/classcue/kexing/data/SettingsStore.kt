@@ -46,6 +46,8 @@ class SettingsStore(context: Context) {
             )
         }.getOrDefault(AudioInputStrategy.AUTO),
         farFieldEnhancementEnabled = prefs.getBoolean("far_field_enhancement_enabled", true),
+        nameHotwordsEnabled = prefs.getBoolean("name_hotwords_enabled", false),
+        powerSavingRecognition = prefs.getBoolean("power_saving_recognition", false),
         phoneVibrationEnabled = readPhoneVibrationEnabled(),
         wearEngineEnabled = prefs.getBoolean("wear_engine_enabled", true),
         watchVibrationEnabled = prefs.getBoolean("watch_vibration_enabled", true),
@@ -94,6 +96,8 @@ class SettingsStore(context: Context) {
             .putString("transcription_model_size", value.transcriptionModelSize.name)
             .putString("audio_input_strategy", value.audioInputStrategy.name)
             .putBoolean("far_field_enhancement_enabled", value.farFieldEnhancementEnabled)
+            .putBoolean("name_hotwords_enabled", value.nameHotwordsEnabled)
+            .putBoolean("power_saving_recognition", value.powerSavingRecognition)
             .putBoolean("phone_vibration_enabled", value.phoneVibrationEnabled)
             .putBoolean("wear_engine_enabled", value.wearEngineEnabled)
             .putBoolean("watch_vibration_enabled", value.watchVibrationEnabled)

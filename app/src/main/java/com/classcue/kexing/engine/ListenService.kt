@@ -111,7 +111,8 @@ class ListenService : Service() {
         }
         acquireWakeLock()
 
-        val modelSize = ClassCueApplication.settingsStore.settings.value.transcriptionModelSize
+        val startSettings = ClassCueApplication.settingsStore.settings.value
+        val modelSize = startSettings.transcriptionModelSize
         val recognizerLabel = AtomicReference(when (modelSize) {
             TranscriptionModelSize.SMALL -> "小档 · 离线快速"
             TranscriptionModelSize.MEDIUM -> "中档 · Zipformer 流式"
@@ -159,6 +160,10 @@ class ListenService : Service() {
             TranscriptionModelSize.MEDIUM, TranscriptionModelSize.LARGE -> SherpaTranscriber(
                 context = applicationContext,
                 secondPass = modelSize == TranscriptionModelSize.LARGE,
+                nameHotwords = startSettings.takeIf { it.nameHotwordsEnabled }
+                    ?.let { listOf(it.displayName) + it.aliases }
+                    .orEmpty(),
+                numThreads = if (startSettings.powerSavingRecognition) 2 else 4,
                 onStatus = onStatus,
                 onReady = onReady,
                 onPartial = { text -> if (running.get()) processTranscript(text, isFinal = false) },
@@ -351,7 +356,9 @@ class ListenService : Service() {
     private fun detectCue(text: String) {
         val settings = ClassCueApplication.settingsStore.settings.value
         val now = System.currentTimeMillis()
-        val identityMentioned = CueClassifier.mentionsIdentity(text, settings.classifierConfig(), null)
+        val nameSounds = AndroidPinyin.matcher()
+        val classifierConfig = settings.classifierConfig()
+        val identityMentioned = CueClassifier.mentionsIdentity(text, classifierConfig, nameSounds)
         if (identityMentioned) {
             identityArmedUntil = now + settings.followupWindowSeconds * 1_000L
         }
@@ -359,7 +366,7 @@ class ListenService : Service() {
         if (now < identityArmedUntil && explicitQuestion) {
             identityArmedUntil = now + settings.followupWindowSeconds * 1_000L
         }
-        val classified = CueClassifier.classify(text, settings.classifierConfig())
+        val classified = CueClassifier.classify(text, classifierConfig, nameSounds)
         val rawResult = if (!classified.shouldAlert() && now < identityArmedUntil && explicitQuestion) {
             CueResult(
                 CueType.DIRECT_QUESTION,

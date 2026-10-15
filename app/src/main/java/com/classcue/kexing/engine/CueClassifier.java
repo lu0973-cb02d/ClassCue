@@ -92,12 +92,19 @@ public final class CueClassifier {
         return new CueResult(type, risk, score, reason);
     }
 
-    /** Whether the utterance names the user, with the same rules the classifier uses. */
+    /**
+     * Whether the utterance names the user, with the same rules the classifier uses. A name that
+     * only sounds alike counts when the teacher is calling on someone or asking in the same breath,
+     * so a lecture phrase such as "黎明前" does not arm the follow-up window for "李明".
+     */
     public static boolean mentionsIdentity(String rawText, ClassifierConfig config, NameSoundMatcher sounds) {
         String text = normalize(rawText);
         if (text.isEmpty()) return false;
         boolean callContext = containsAny(text, ClassroomCueLexicon.CALL_CUES);
-        return matchIdentity(text, config, callContext, sounds) != IdentityMatch.NONE;
+        IdentityMatch identity = matchIdentity(text, config, callContext, sounds);
+        if (identity == IdentityMatch.NONE) return false;
+        if (soundsAlike(identity)) return callContext || hasExplicitQuestionSignal(text);
+        return true;
     }
 
     static IdentityMatch matchIdentity(
