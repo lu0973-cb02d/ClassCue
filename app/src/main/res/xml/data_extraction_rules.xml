@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup>
+        <!-- Classroom transcripts, alerts and AI answers never go to cloud backup. -->
+        <exclude domain="database" path="classcue_history.db" />
         <exclude domain="sharedpref" path="secret_store.xml" />
         <exclude domain="file" path="recordings/" />
         <exclude domain="file" path="offline_models/" />

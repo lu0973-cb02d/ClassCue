@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import com.classcue.kexing.engine.CueClassifier
 import com.classcue.kexing.engine.AudioInputStrategy
 import com.classcue.kexing.engine.ModelDownloadPhase
+import com.classcue.kexing.engine.ModelDownloadSource
 import com.classcue.kexing.engine.ModelDownloadState
 import com.classcue.kexing.engine.OfflineModelPack
 import com.classcue.kexing.model.AppSettings
@@ -388,6 +389,24 @@ internal fun SettingsScreen(
                 Text(
                     "小档随 APK 安装。中/大档改为手动下载：离开课醒或锁屏后仍会在后台继续，并支持暂停和断点续传。",
                     style = MaterialTheme.typography.bodySmall
+                )
+                Text("下载源", fontWeight = FontWeight.Medium)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = settings.modelDownloadSource == ModelDownloadSource.GITHUB,
+                        onClick = { onUpdateSettings { it.copy(modelDownloadSource = ModelDownloadSource.GITHUB) } },
+                        label = { Text("GitHub 官方") }
+                    )
+                    FilterChip(
+                        selected = settings.modelDownloadSource == ModelDownloadSource.MIRROR,
+                        onClick = { onUpdateSettings { it.copy(modelDownloadSource = ModelDownloadSource.MIRROR) } },
+                        label = { Text("国内镜像 hf-mirror.com") }
+                    )
+                }
+                Text(
+                    "两个来源的文件都会按课醒内置的 SHA-256 逐一校验，对不上就不会安装；首选来源失败时自动改用另一个。GitHub 在国内较慢时可选镜像。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(10.dp))
                 ModelPackCard(

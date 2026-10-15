@@ -73,7 +73,8 @@ class ModelDownloadService : Service() {
                     repository.downloadAndInstall(
                         pack = pack,
                         shouldContinue = { continueWork.get() },
-                        onProgress = { state -> updateNotification(state) }
+                        onProgress = { state -> updateNotification(state) },
+                        source = ClassCueApplication.settingsStore.settings.value.modelDownloadSource
                     )
                 } catch (_: InterruptedException) {
                     repository.pause(pack)

@@ -8,6 +8,7 @@ import com.classcue.kexing.model.AutoAnswerScope
 import com.classcue.kexing.model.DetectionMode
 import com.classcue.kexing.model.TranscriptionModelSize
 import com.classcue.kexing.engine.AudioInputStrategy
+import com.classcue.kexing.engine.ModelDownloadSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
@@ -40,6 +41,9 @@ class SettingsStore(context: Context) {
                 prefs.getString("transcription_model_size", TranscriptionModelSize.MEDIUM.name).orEmpty()
             )
         }.getOrDefault(TranscriptionModelSize.MEDIUM),
+        modelDownloadSource = runCatching {
+            ModelDownloadSource.valueOf(prefs.getString("model_download_source", ModelDownloadSource.GITHUB.name).orEmpty())
+        }.getOrDefault(ModelDownloadSource.GITHUB),
         audioInputStrategy = runCatching {
             AudioInputStrategy.valueOf(
                 prefs.getString("audio_input_strategy", AudioInputStrategy.AUTO.name).orEmpty()
@@ -97,6 +101,7 @@ class SettingsStore(context: Context) {
             .putBoolean("prefer_on_device", value.preferOnDevice)
             .putString("transcription_model_size", value.transcriptionModelSize.name)
             .putString("audio_input_strategy", value.audioInputStrategy.name)
+            .putString("model_download_source", value.modelDownloadSource.name)
             .putBoolean("far_field_enhancement_enabled", value.farFieldEnhancementEnabled)
             .putBoolean("name_hotwords_enabled", value.nameHotwordsEnabled)
             .putBoolean("power_saving_recognition", value.powerSavingRecognition)

@@ -33,6 +33,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 class ListenService : Service() {
@@ -517,36 +518,45 @@ class ListenService : Service() {
         }
         val completed = AtomicInteger(0)
         val succeeded = AtomicInteger(0)
+        val lastStreamUpdate = AtomicLong(0L)
         configured.forEach { (profile, keyValue) ->
             scope.launch {
                 try {
+                    val tierLabel = if (profile.tier == AiTier.FAST) "极速" else "强力"
                     AiAnswerClient().answer(
                         profile = profile,
                         systemPrompt = settings.aiSystemPrompt,
                         apiKey = keyValue,
                         question = question,
-                        recentContext = recentContext
+                        recentContext = recentContext,
+                        onPartial = { partial ->
+                            // Show the answer while it is being written, at most every 0.7 s.
+                            val now = System.currentTimeMillis()
+                            val previous = lastStreamUpdate.get()
+                            if (aiGenerations[eventId]?.get() == generation &&
+                                now - previous >= STREAM_UPDATE_MS &&
+                                lastStreamUpdate.compareAndSet(previous, now)
+                            ) {
+                                val eventAnswers = aiAnswers.computeIfAbsent(eventId) { ConcurrentHashMap() }
+                                synchronized(eventAnswers) {
+                                    if (eventAnswers[profile.id]?.final != true) {
+                                        eventAnswers[profile.id] = ModelAnswer(profile.tier, profile.model, "$tierLabel · 生成中", partial, final = false)
+                                        if (latestCueEventId == eventId) {
+                                            notifyCue(eventId, result, question, combineAnswers(eventAnswers.values, manualQuestion), settings, onlyAlertOnce = true)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     ).onSuccess { answer ->
                         if (aiGenerations[eventId]?.get() != generation) return@onSuccess
                         succeeded.incrementAndGet()
-                        val tier = if (profile.tier == AiTier.FAST) "极速" else "强力"
+                        val tier = tierLabel
                         val eventAnswers = aiAnswers.computeIfAbsent(eventId) { ConcurrentHashMap() }
                         synchronized(eventAnswers) {
                             val modelAnswer = ModelAnswer(profile.tier, profile.model, tier, answer)
                             eventAnswers[profile.id] = modelAnswer
-                            val responses = eventAnswers.values
-                                .sortedWith(
-                                    compareByDescending<ModelAnswer> { it.tier == AiTier.STRONG }
-                                        .thenBy { it.model }
-                                )
-                                .joinToString("\n\n") { item ->
-                                    "【${item.tierLabel} · ${item.model}】\n${item.answer.trim()}"
-                                }
-                            val combined = if (manualQuestion == null) {
-                                responses
-                            } else {
-                                "【本次发送】\n${manualQuestion.trim()}\n\n$responses"
-                            }
+                            val combined = combineAnswers(eventAnswers.values.filter { it.final }, manualQuestion)
                             ClassCueApplication.historyStore.updateAnswer(eventId, combined)
                             WearEngineBridge.sendAnswer(
                                 context = this@ListenService,
@@ -557,7 +567,11 @@ class ListenService : Service() {
                                 settings = settings
                             )
                             if (latestCueEventId == eventId) {
-                                notifyCue(eventId, result, question, combined, settings, onlyAlertOnce = true)
+                                notifyCue(
+                                    eventId, result, question,
+                                    combineAnswers(eventAnswers.values, manualQuestion),
+                                    settings, onlyAlertOnce = true
+                                )
                             }
                         }
                     }
@@ -579,6 +593,13 @@ class ListenService : Service() {
                 }
             }
         }
+    }
+
+    private fun combineAnswers(answers: Collection<ModelAnswer>, manualQuestion: String?): String {
+        val responses = answers
+            .sortedWith(compareByDescending<ModelAnswer> { it.tier == AiTier.STRONG }.thenBy { it.model })
+            .joinToString("\n\n") { item -> "【${item.tierLabel} · ${item.model}】\n${item.answer.trim()}" }
+        return if (manualQuestion == null) responses else "【本次发送】\n${manualQuestion.trim()}\n\n$responses"
     }
 
     private fun finishManualRequestIfIdle(manualQuestion: String?) {
@@ -635,6 +656,7 @@ class ListenService : Service() {
                 when {
                     answer.isNullOrBlank() -> "检测到课堂提醒 · 点开确认老师原话"
                     answer.contains("正在调用") -> "AI 正在回答 · 极速模型会先显示"
+                    answer.contains("生成中") -> "AI 正在回答 · 文字逐步显示"
                     answer.contains("已达上限") -> "自动 AI 已达频率上限 · 可手动重答"
                     answer.contains("未配置") || answer.contains("未能返回") -> "AI 回答失败 · 点开检查设置"
                     else -> "AI 回答已生成 · 点开查看"
@@ -770,12 +792,15 @@ class ListenService : Service() {
         private const val NOTIFICATION_ACTIVE_CUE = 2100
         private const val WAKE_LOCK_TIMEOUT_MS = 8L * 60L * 60L * 1_000L
         private const val AUTO_AI_WINDOW_MS = 10L * 60L * 1_000L
+        private const val STREAM_UPDATE_MS = 700L
     }
 
     private data class ModelAnswer(
         val tier: AiTier,
         val model: String,
         val tierLabel: String,
-        val answer: String
+        val answer: String,
+        /** False while the answer is still streaming; only final answers are saved. */
+        val final: Boolean = true
     )
 }

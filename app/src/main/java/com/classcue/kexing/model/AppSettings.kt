@@ -2,6 +2,7 @@ package com.classcue.kexing.model
 
 import com.classcue.kexing.engine.ClassifierConfig
 import com.classcue.kexing.engine.AudioInputStrategy
+import com.classcue.kexing.engine.ModelDownloadSource
 
 enum class DetectionMode { ALL, NAMED_ONLY, ROLL_CALL_ONLY }
 enum class AiTier { FAST, STRONG }
@@ -39,6 +40,8 @@ data class AppSettings(
     val detectionMode: DetectionMode = DetectionMode.ALL,
     val preferOnDevice: Boolean = true,
     val transcriptionModelSize: TranscriptionModelSize = TranscriptionModelSize.MEDIUM,
+    /** Preferred model download source; the other one is tried automatically if it fails. */
+    val modelDownloadSource: ModelDownloadSource = ModelDownloadSource.GITHUB,
     val audioInputStrategy: AudioInputStrategy = AudioInputStrategy.AUTO,
     val farFieldEnhancementEnabled: Boolean = true,
     /** Experimental: bias the medium/large streaming recognizer toward the user's name. */

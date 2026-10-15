@@ -37,7 +37,12 @@ data class ModelDownloadState(
             .toFloat().coerceIn(0f, 1f)
 }
 
-class ModelRepository(context: Context) {
+class ModelRepository internal constructor(
+    context: Context,
+    private val specFor: (OfflineModelPack) -> ModelPackageSpec
+) {
+    constructor(context: Context) : this(context, OfflineModelCatalog::spec)
+
     private val appContext = context.applicationContext
     private val root = File(appContext.filesDir, "offline_models").apply { mkdirs() }
     // Keep partial archives in filesDir so Android cache cleanup does not erase resumable downloads.
@@ -76,7 +81,7 @@ class ModelRepository(context: Context) {
         update(pack) { current ->
             if (current.phase == ModelDownloadPhase.READY) current else current.copy(
                 phase = ModelDownloadPhase.PAUSED,
-                downloadedBytes = partial(spec(pack)).length(),
+                downloadedBytes = downloadedBytes(spec(pack)),
                 bytesPerSecond = 0L,
                 message = message
             )
@@ -85,11 +90,14 @@ class ModelRepository(context: Context) {
     fun fail(pack: OfflineModelPack, message: String): ModelDownloadState = update(pack) { current ->
         current.copy(
             phase = ModelDownloadPhase.FAILED,
-            downloadedBytes = partial(spec(pack)).length(),
+            downloadedBytes = downloadedBytes(spec(pack)),
             bytesPerSecond = 0L,
             message = message
         )
     }
+
+    private fun downloadedBytes(spec: ModelPackageSpec): Long =
+        partial(spec).length().takeIf { it > 0L } ?: (mirrorStaging(spec).listFiles()?.sumOf { it.length() } ?: 0L)
 
     @Synchronized
     fun delete(pack: OfflineModelPack): Boolean {
@@ -98,6 +106,7 @@ class ModelRepository(context: Context) {
         val spec = spec(pack)
         target(spec).deleteRecursively()
         staging(spec).deleteRecursively()
+        mirrorStaging(spec).deleteRecursively()
         archive(spec).delete()
         partial(spec).delete()
         prefs.edit().remove(totalKey(pack)).apply()
@@ -107,22 +116,77 @@ class ModelRepository(context: Context) {
         return true
     }
 
+    /**
+     * Installs [pack] from [source], falling back to the other source if the first one fails
+     * (pausing is not a failure). Every byte is checked against the pinned hashes either way.
+     */
     fun downloadAndInstall(
         pack: OfflineModelPack,
         shouldContinue: () -> Boolean,
-        onProgress: (ModelDownloadState) -> Unit
+        onProgress: (ModelDownloadState) -> Unit,
+        source: ModelDownloadSource = ModelDownloadSource.GITHUB
     ): File {
         val spec = spec(pack)
         installedDirectory(pack)?.let {
             onProgress(update(pack) { current -> current.copy(phase = ModelDownloadPhase.READY, message = "已安装") })
             return it
         }
+        val order = listOf(source) + ModelDownloadSource.entries.filter { it != source }
+        val failures = mutableListOf<Pair<ModelDownloadSource, Throwable>>()
+        order.forEachIndexed { index, current ->
+            checkContinue(shouldContinue)
+            try {
+                return when (current) {
+                    ModelDownloadSource.GITHUB -> installFromArchive(spec, shouldContinue, onProgress)
+                    ModelDownloadSource.MIRROR -> installFromMirror(spec, shouldContinue, onProgress)
+                }
+            } catch (error: InterruptedException) {
+                throw error
+            } catch (error: Throwable) {
+                failures += current to error
+                order.getOrNull(index + 1)?.let { next ->
+                    onProgress(update(pack) { state ->
+                        state.copy(
+                            phase = ModelDownloadPhase.DOWNLOADING,
+                            bytesPerSecond = 0L,
+                            message = "${sourceLabel(current)}失败（${error.message ?: "未知错误"}），改用${sourceLabel(next)}"
+                        )
+                    })
+                }
+            }
+        }
+        throw IllegalStateException(
+            failures.joinToString("；") { (source, error) -> "${sourceLabel(source)}：${error.message ?: "下载失败"}" },
+            failures.firstOrNull()?.second
+        )
+    }
+
+    private fun installFromArchive(
+        spec: ModelPackageSpec,
+        shouldContinue: () -> Boolean,
+        onProgress: (ModelDownloadState) -> Unit
+    ): File {
+        val pack = spec.pack
         val requiredSpace = spec.archiveBytes * 3L
         check(root.usableSpace > requiredSpace) {
             "存储空间不足，${spec.label}下载和解压需要至少 ${formatSize(requiredSpace)} 可用空间"
         }
         checkContinue(shouldContinue)
-        if (!archive(spec).isFile) download(spec, shouldContinue, onProgress)
+        if (!archive(spec).isFile) {
+            prefs.edit().putLong(totalKey(pack), spec.archiveBytes).apply()
+            fetch(spec.archiveUrl, partial(spec), spec.archive, spec.label, shouldContinue) { received, speed, resumed ->
+                onProgress(update(pack) { current ->
+                    current.copy(
+                        phase = ModelDownloadPhase.DOWNLOADING,
+                        downloadedBytes = received,
+                        totalBytes = spec.archiveBytes,
+                        bytesPerSecond = speed,
+                        message = if (resumed) "正在从 GitHub 断点继续下载" else "正在从 GitHub 官方发布页下载"
+                    )
+                })
+            }
+            promoteCompletedArchive(spec)
+        }
         checkContinue(shouldContinue)
         onProgress(update(pack) { current ->
             current.copy(
@@ -148,12 +212,73 @@ class ModelRepository(context: Context) {
             throw error
         }
         archive(spec).delete()
-        prefs.edit().remove(totalKey(pack)).apply()
+        return finishInstall(spec, onProgress)
+    }
+
+    /**
+     * Downloads the runtime files one by one from the Hugging Face mirror. No archive and no
+     * extraction step, so it also needs less free space. Each file is resumable and verified.
+     */
+    private fun installFromMirror(
+        spec: ModelPackageSpec,
+        shouldContinue: () -> Boolean,
+        onProgress: (ModelDownloadState) -> Unit
+    ): File {
+        val pack = spec.pack
+        val total = spec.mirrorBytes
+        check(root.usableSpace > total * 2L) {
+            "存储空间不足，${spec.label}需要至少 ${formatSize(total * 2L)} 可用空间"
+        }
+        val staging = mirrorStaging(spec).apply { mkdirs() }
+        prefs.edit().putLong(totalKey(pack), total).apply()
+        var completed = 0L
+        for (file in spec.files) {
+            checkContinue(shouldContinue)
+            val destination = File(staging, file.name)
+            if (!(destination.isFile && destination.length() == file.checksum.sizeBytes)) {
+                val part = File(staging, file.name + ".part")
+                val label = "${spec.label} ${file.name}"
+                fetch(OfflineModelCatalog.mirrorUrl(spec, file), part, file.checksum, label, shouldContinue) { received, speed, _ ->
+                    onProgress(update(pack) { current ->
+                        current.copy(
+                            phase = ModelDownloadPhase.DOWNLOADING,
+                            downloadedBytes = completed + received,
+                            totalBytes = total,
+                            bytesPerSecond = speed,
+                            message = "正在从国内镜像下载 ${file.name}"
+                        )
+                    })
+                }
+                onProgress(update(pack) { current ->
+                    current.copy(phase = ModelDownloadPhase.INSTALLING, bytesPerSecond = 0L, message = "正在校验 ${file.name}")
+                })
+                val result = ModelArchiveIntegrity.verify(part, file.checksum, shouldContinue)
+                if (result != ArchiveVerification.Verified) {
+                    part.delete()
+                    throw IllegalStateException("$label 校验失败，文件可能损坏或被替换，已删除")
+                }
+                check(part.renameTo(destination)) { "无法保存 ${file.name}" }
+            }
+            completed += file.checksum.sizeBytes
+        }
+        staging.listFiles()?.filter { it.name.endsWith(".part") }?.forEach { it.delete() }
+        check(isValid(staging, spec)) { "${spec.label}文件不完整" }
+        val target = target(spec)
+        if (target.exists()) target.deleteRecursively()
+        if (!staging.renameTo(target)) {
+            staging.copyRecursively(target, overwrite = true)
+            staging.deleteRecursively()
+        }
+        return finishInstall(spec, onProgress)
+    }
+
+    private fun finishInstall(spec: ModelPackageSpec, onProgress: (ModelDownloadState) -> Unit): File {
+        prefs.edit().remove(totalKey(spec.pack)).apply()
         val directory = target(spec)
         check(isValid(directory, spec)) { "${spec.label}安装失败" }
-        onProgress(update(pack) {
+        onProgress(update(spec.pack) {
             ModelDownloadState(
-                pack = pack,
+                pack = spec.pack,
                 phase = ModelDownloadPhase.READY,
                 downloadedBytes = spec.archiveBytes,
                 totalBytes = spec.archiveBytes,
@@ -187,39 +312,40 @@ class ModelRepository(context: Context) {
         prefs.edit().remove(totalKey(spec.pack)).apply()
     }
 
-    private fun download(
-        spec: ModelPackageSpec,
+    /**
+     * Downloads [url] into [part] with HTTP range resume until it holds exactly the pinned number
+     * of bytes. The caller verifies the digest. A server announcing a different size, or sending
+     * more bytes than pinned, aborts and discards the partial file.
+     */
+    private fun fetch(
+        url: String,
+        part: File,
+        pinned: ArchiveChecksum,
+        label: String,
         shouldContinue: () -> Boolean,
-        onProgress: (ModelDownloadState) -> Unit
+        onBytes: (received: Long, bytesPerSecond: Long, resumed: Boolean) -> Unit
     ) {
-        val part = partial(spec)
         part.parentFile?.mkdirs()
-        when (DownloadResumePolicy.partialAction(part.length(), spec.archiveBytes)) {
-            PartialDownloadAction.COMPLETE -> {
-                promoteCompletedArchive(spec)
-                return
-            }
+        when (DownloadResumePolicy.partialAction(part.length(), pinned.sizeBytes)) {
+            PartialDownloadAction.COMPLETE -> return
             PartialDownloadAction.RESTART -> if (part.exists()) part.delete()
             PartialDownloadAction.RESUME -> Unit
         }
         var received = part.length()
-        val connection = openFollowingRedirects(spec.archiveUrl, received)
+        val connection = openFollowingRedirects(url, received)
         try {
             val code = connection.responseCode
             val remoteTotal = parseTotal(connection.getHeaderField("Content-Range"))
             val contentLength = connection.contentLengthLong
             val advertisedTotal = DownloadResumePolicy.advertisedTotal(code, contentLength, remoteTotal)
-            if (DownloadResumePolicy.conflictsWithPinnedSize(advertisedTotal, spec.archiveBytes)) {
-                discardDownload(spec)
+            if (DownloadResumePolicy.conflictsWithPinnedSize(advertisedTotal, pinned.sizeBytes)) {
+                part.delete()
                 throw IllegalStateException(
-                    "${spec.label}的上游文件大小（$advertisedTotal 字节）与本版本固定值" +
-                        "（${spec.archiveBytes} 字节）不一致，已停止下载，避免安装被替换的模型"
+                    "${label}的服务器文件大小（$advertisedTotal 字节）与本版本固定值" +
+                        "（${pinned.sizeBytes} 字节）不一致，已停止下载，避免安装被替换的模型"
                 )
             }
-            if (DownloadResumePolicy.isAlreadyComplete(received, code, remoteTotal)) {
-                promoteCompletedArchive(spec)
-                return
-            }
+            if (DownloadResumePolicy.isAlreadyComplete(received, code, remoteTotal)) return
             check(code == HttpURLConnection.HTTP_OK || code == HttpURLConnection.HTTP_PARTIAL) {
                 "模型下载失败：HTTP $code"
             }
@@ -228,26 +354,10 @@ class ModelRepository(context: Context) {
                 received = 0L
                 if (part.exists()) part.delete()
             }
-            val hasKnownTotal = remoteTotal > 0L || contentLength > 0L
-            val total = DownloadResumePolicy.resolvedTotal(
-                existingBytes = received,
-                append = append,
-                contentLength = contentLength,
-                rangeTotal = remoteTotal,
-                expectedBytes = spec.archiveBytes
-            )
-            prefs.edit().putLong(totalKey(spec.pack), total).apply()
+            val resumed = received > 0L
             var lastUpdateAt = System.currentTimeMillis()
             var lastUpdateBytes = received
-            onProgress(update(spec.pack) {
-                ModelDownloadState(
-                    pack = spec.pack,
-                    phase = ModelDownloadPhase.DOWNLOADING,
-                    downloadedBytes = received,
-                    totalBytes = total,
-                    message = if (received > 0L) "正在从断点继续下载" else "正在后台下载"
-                )
-            })
+            onBytes(received, 0L, resumed)
             var exceededPinnedSize = false
             BufferedInputStream(connection.inputStream).use { input ->
                 FileOutputStream(part, append).buffered().use { output ->
@@ -256,7 +366,7 @@ class ModelRepository(context: Context) {
                         checkContinue(shouldContinue)
                         val count = input.read(buffer)
                         if (count < 0) break
-                        if (received + count > spec.archiveBytes) {
+                        if (received + count > pinned.sizeBytes) {
                             exceededPinnedSize = true
                             break
                         }
@@ -264,31 +374,19 @@ class ModelRepository(context: Context) {
                         received += count
                         val now = System.currentTimeMillis()
                         if (now - lastUpdateAt >= 350L) {
-                            val speed = ((received - lastUpdateBytes) * 1_000L / (now - lastUpdateAt).coerceAtLeast(1L))
+                            val speed = (received - lastUpdateBytes) * 1_000L / (now - lastUpdateAt).coerceAtLeast(1L)
                             lastUpdateAt = now
                             lastUpdateBytes = received
-                            onProgress(update(spec.pack) { current ->
-                                current.copy(
-                                    phase = ModelDownloadPhase.DOWNLOADING,
-                                    downloadedBytes = received,
-                                    totalBytes = total,
-                                    bytesPerSecond = speed,
-                                    message = "正在后台下载"
-                                )
-                            })
+                            onBytes(received, speed, resumed)
                         }
                     }
                 }
             }
             if (exceededPinnedSize) {
-                discardDownload(spec)
-                throw IllegalStateException("${spec.label}下载内容超过固定大小，已丢弃，请重新下载")
+                part.delete()
+                throw IllegalStateException("${label}下载内容超过固定大小，已丢弃，请重新下载")
             }
-            check(received > 1024L * 1024L) { "${spec.label}下载内容不完整" }
-            check(!hasKnownTotal || received >= total) {
-                "${spec.label}下载中断，已保留断点，请点击继续下载"
-            }
-            promoteCompletedArchive(spec)
+            check(received == pinned.sizeBytes) { "${label}下载中断，已保留断点，请点击继续下载" }
         } finally {
             connection.disconnect()
         }
@@ -299,6 +397,11 @@ class ModelRepository(context: Context) {
         val completed = archive(spec)
         if (completed.exists()) completed.delete()
         check(part.renameTo(completed)) { "无法保存已下载的模型包" }
+    }
+
+    private fun sourceLabel(source: ModelDownloadSource): String = when (source) {
+        ModelDownloadSource.GITHUB -> "GitHub 官方源"
+        ModelDownloadSource.MIRROR -> "国内镜像"
     }
 
     private fun install(spec: ModelPackageSpec, shouldContinue: () -> Boolean) {
@@ -376,7 +479,8 @@ class ModelRepository(context: Context) {
                 message = "已安装，可离线使用"
             )
         }
-        val downloaded = partial(spec).length()
+        val mirrorBytes = mirrorStaging(spec).listFiles()?.sumOf { it.length() } ?: 0L
+        val downloaded = partial(spec).length().takeIf { it > 0L } ?: mirrorBytes
         val total = prefs.getLong(totalKey(spec.pack), spec.archiveBytes)
         return if (downloaded > 0L || archive(spec).isFile) {
             ModelDownloadState(
@@ -402,9 +506,10 @@ class ModelRepository(context: Context) {
         return updated
     }
 
-    private fun spec(pack: OfflineModelPack): ModelPackageSpec = OfflineModelCatalog.spec(pack)
+    private fun spec(pack: OfflineModelPack): ModelPackageSpec = specFor(pack)
     private fun target(spec: ModelPackageSpec) = File(root, spec.directoryName)
     private fun staging(spec: ModelPackageSpec) = File(root, "${spec.directoryName}.preparing")
+    private fun mirrorStaging(spec: ModelPackageSpec) = File(root, "${spec.directoryName}.mirror")
     private fun archive(spec: ModelPackageSpec) = File(cache, "${spec.directoryName}.tar.bz2")
     private fun partial(spec: ModelPackageSpec) = File(cache, "${spec.directoryName}.tar.bz2.part")
     private fun totalKey(pack: OfflineModelPack) = "${pack.name.lowercase()}_total"
