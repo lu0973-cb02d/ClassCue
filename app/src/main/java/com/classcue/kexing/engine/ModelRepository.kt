@@ -1,6 +1,7 @@
 package com.classcue.kexing.engine
 
 import android.content.Context
+import com.classcue.kexing.BuildConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
@@ -36,41 +37,12 @@ data class ModelDownloadState(
             .toFloat().coerceIn(0f, 1f)
 }
 
-private data class ModelPackageSpec(
-    val pack: OfflineModelPack,
-    val label: String,
-    val directoryName: String,
-    val archiveUrl: String,
-    val expectedDownloadBytes: Long,
-    val requiredFiles: List<String>
-)
-
 class ModelRepository(context: Context) {
     private val appContext = context.applicationContext
     private val root = File(appContext.filesDir, "offline_models").apply { mkdirs() }
     // Keep partial archives in filesDir so Android cache cleanup does not erase resumable downloads.
     private val cache = File(appContext.filesDir, "model_packages").apply { mkdirs() }
     private val prefs = appContext.getSharedPreferences("model_download_state", Context.MODE_PRIVATE)
-    private val specs = mapOf(
-        OfflineModelPack.MEDIUM to ModelPackageSpec(
-            pack = OfflineModelPack.MEDIUM,
-            label = "中档流式模型",
-            directoryName = "sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30",
-            archiveUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/" +
-                "sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2",
-            expectedDownloadBytes = 127L * 1024L * 1024L,
-            requiredFiles = listOf("encoder.int8.onnx", "decoder.onnx", "joiner.int8.onnx", "tokens.txt")
-        ),
-        OfflineModelPack.LARGE to ModelPackageSpec(
-            pack = OfflineModelPack.LARGE,
-            label = "大档精修模型",
-            directoryName = "sherpa-onnx-zipformer-ctc-zh-int8-2025-07-03",
-            archiveUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/" +
-                "sherpa-onnx-zipformer-ctc-zh-int8-2025-07-03.tar.bz2",
-            expectedDownloadBytes = 287L * 1024L * 1024L,
-            requiredFiles = listOf("model.int8.onnx", "tokens.txt")
-        )
-    )
 
     private val _states = MutableStateFlow(
         OfflineModelPack.entries.associateWith { pack -> diskState(spec(pack)) }
@@ -145,8 +117,9 @@ class ModelRepository(context: Context) {
             onProgress(update(pack) { current -> current.copy(phase = ModelDownloadPhase.READY, message = "已安装") })
             return it
         }
-        check(root.usableSpace > spec.expectedDownloadBytes * 3L) {
-            "存储空间不足，${spec.label}下载和解压需要至少 ${formatSize(spec.expectedDownloadBytes * 3L)} 可用空间"
+        val requiredSpace = spec.archiveBytes * 3L
+        check(root.usableSpace > requiredSpace) {
+            "存储空间不足，${spec.label}下载和解压需要至少 ${formatSize(requiredSpace)} 可用空间"
         }
         checkContinue(shouldContinue)
         if (!archive(spec).isFile) download(spec, shouldContinue, onProgress)
@@ -155,7 +128,15 @@ class ModelRepository(context: Context) {
             current.copy(
                 phase = ModelDownloadPhase.INSTALLING,
                 bytesPerSecond = 0L,
-                message = "下载完成，正在解压安装"
+                message = "下载完成，正在校验模型包完整性"
+            )
+        })
+        verifyArchive(spec, shouldContinue)
+        onProgress(update(pack) { current ->
+            current.copy(
+                phase = ModelDownloadPhase.INSTALLING,
+                bytesPerSecond = 0L,
+                message = "校验通过，正在解压安装"
             )
         })
         try {
@@ -174,12 +155,36 @@ class ModelRepository(context: Context) {
             ModelDownloadState(
                 pack = pack,
                 phase = ModelDownloadPhase.READY,
-                downloadedBytes = spec.expectedDownloadBytes,
-                totalBytes = spec.expectedDownloadBytes,
+                downloadedBytes = spec.archiveBytes,
+                totalBytes = spec.archiveBytes,
                 message = "已安装，可离线使用"
             )
         })
         return directory
+    }
+
+    private fun verifyArchive(spec: ModelPackageSpec, shouldContinue: () -> Boolean) {
+        val result = ModelArchiveIntegrity.verify(archive(spec), spec.archive, shouldContinue)
+        if (result == ArchiveVerification.Verified) return
+        discardDownload(spec)
+        throw IllegalStateException(integrityFailureMessage(spec, result))
+    }
+
+    private fun integrityFailureMessage(spec: ModelPackageSpec, result: ArchiveVerification): String =
+        when (result) {
+            is ArchiveVerification.SizeMismatch ->
+                "${spec.label}校验失败：文件大小 ${result.actualBytes} 字节，与固定值 " +
+                    "${result.expectedBytes} 字节不符，已删除，请重新下载"
+            is ArchiveVerification.DigestMismatch ->
+                "${spec.label}校验失败：SHA-256 与固定值不一致，文件可能损坏或被替换，已删除，请重新下载"
+            ArchiveVerification.Verified -> "${spec.label}已通过完整性校验"
+        }
+
+    /** Removes every downloaded byte for [spec] so the next attempt starts from a clean slate. */
+    private fun discardDownload(spec: ModelPackageSpec) {
+        archive(spec).delete()
+        partial(spec).delete()
+        prefs.edit().remove(totalKey(spec.pack)).apply()
     }
 
     private fun download(
@@ -189,11 +194,28 @@ class ModelRepository(context: Context) {
     ) {
         val part = partial(spec)
         part.parentFile?.mkdirs()
+        when (DownloadResumePolicy.partialAction(part.length(), spec.archiveBytes)) {
+            PartialDownloadAction.COMPLETE -> {
+                promoteCompletedArchive(spec)
+                return
+            }
+            PartialDownloadAction.RESTART -> if (part.exists()) part.delete()
+            PartialDownloadAction.RESUME -> Unit
+        }
         var received = part.length()
         val connection = openFollowingRedirects(spec.archiveUrl, received)
         try {
             val code = connection.responseCode
             val remoteTotal = parseTotal(connection.getHeaderField("Content-Range"))
+            val contentLength = connection.contentLengthLong
+            val advertisedTotal = DownloadResumePolicy.advertisedTotal(code, contentLength, remoteTotal)
+            if (DownloadResumePolicy.conflictsWithPinnedSize(advertisedTotal, spec.archiveBytes)) {
+                discardDownload(spec)
+                throw IllegalStateException(
+                    "${spec.label}的上游文件大小（$advertisedTotal 字节）与本版本固定值" +
+                        "（${spec.archiveBytes} 字节）不一致，已停止下载，避免安装被替换的模型"
+                )
+            }
             if (DownloadResumePolicy.isAlreadyComplete(received, code, remoteTotal)) {
                 promoteCompletedArchive(spec)
                 return
@@ -206,14 +228,13 @@ class ModelRepository(context: Context) {
                 received = 0L
                 if (part.exists()) part.delete()
             }
-            val contentLength = connection.contentLengthLong
             val hasKnownTotal = remoteTotal > 0L || contentLength > 0L
             val total = DownloadResumePolicy.resolvedTotal(
                 existingBytes = received,
                 append = append,
                 contentLength = contentLength,
                 rangeTotal = remoteTotal,
-                expectedBytes = spec.expectedDownloadBytes
+                expectedBytes = spec.archiveBytes
             )
             prefs.edit().putLong(totalKey(spec.pack), total).apply()
             var lastUpdateAt = System.currentTimeMillis()
@@ -227,6 +248,7 @@ class ModelRepository(context: Context) {
                     message = if (received > 0L) "正在从断点继续下载" else "正在后台下载"
                 )
             })
+            var exceededPinnedSize = false
             BufferedInputStream(connection.inputStream).use { input ->
                 FileOutputStream(part, append).buffered().use { output ->
                     val buffer = ByteArray(128 * 1024)
@@ -234,6 +256,10 @@ class ModelRepository(context: Context) {
                         checkContinue(shouldContinue)
                         val count = input.read(buffer)
                         if (count < 0) break
+                        if (received + count > spec.archiveBytes) {
+                            exceededPinnedSize = true
+                            break
+                        }
                         output.write(buffer, 0, count)
                         received += count
                         val now = System.currentTimeMillis()
@@ -253,6 +279,10 @@ class ModelRepository(context: Context) {
                         }
                     }
                 }
+            }
+            if (exceededPinnedSize) {
+                discardDownload(spec)
+                throw IllegalStateException("${spec.label}下载内容超过固定大小，已丢弃，请重新下载")
             }
             check(received > 1024L * 1024L) { "${spec.label}下载内容不完整" }
             check(!hasKnownTotal || received >= total) {
@@ -313,7 +343,7 @@ class ModelRepository(context: Context) {
                 connectTimeout = 20_000
                 readTimeout = 45_000
                 setRequestProperty("Accept-Encoding", "identity")
-                setRequestProperty("User-Agent", "ClassCue-Android/0.1.3")
+                setRequestProperty("User-Agent", "ClassCue-Android/${BuildConfig.VERSION_NAME}")
                 if (offset > 0L) setRequestProperty("Range", "bytes=$offset-")
             }
             when (connection.responseCode) {
@@ -341,13 +371,13 @@ class ModelRepository(context: Context) {
             return ModelDownloadState(
                 spec.pack,
                 ModelDownloadPhase.READY,
-                spec.expectedDownloadBytes,
-                spec.expectedDownloadBytes,
+                spec.archiveBytes,
+                spec.archiveBytes,
                 message = "已安装，可离线使用"
             )
         }
         val downloaded = partial(spec).length()
-        val total = prefs.getLong(totalKey(spec.pack), spec.expectedDownloadBytes)
+        val total = prefs.getLong(totalKey(spec.pack), spec.archiveBytes)
         return if (downloaded > 0L || archive(spec).isFile) {
             ModelDownloadState(
                 spec.pack,
@@ -372,7 +402,7 @@ class ModelRepository(context: Context) {
         return updated
     }
 
-    private fun spec(pack: OfflineModelPack): ModelPackageSpec = requireNotNull(specs[pack])
+    private fun spec(pack: OfflineModelPack): ModelPackageSpec = OfflineModelCatalog.spec(pack)
     private fun target(spec: ModelPackageSpec) = File(root, spec.directoryName)
     private fun staging(spec: ModelPackageSpec) = File(root, "${spec.directoryName}.preparing")
     private fun archive(spec: ModelPackageSpec) = File(cache, "${spec.directoryName}.tar.bz2")

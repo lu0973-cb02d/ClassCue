@@ -65,9 +65,11 @@ Multiple forms of address can be entered in one field and separated by a Chinese
 |---|---|---|---:|
 | Small | Low storage use and immediate startup | Bundled Vosk small Chinese model | Included in the app |
 | Medium | More stable streaming classroom transcription | On-demand Zipformer INT8 download | About 127 MiB |
-| Large | A second, higher-accuracy pass after streaming recognition | On-demand Zipformer CTC INT8 download | About 287 MiB |
+| Large | A second, higher-accuracy pass after streaming recognition | On-demand Zipformer CTC INT8 download | About 288 MiB |
 
 Model downloads run in a dedicated foreground data-sync service and provide progress, current speed, pause, resume, retry, and delete controls. The large tier depends on the medium streaming model, so ClassCue queues the medium package first when required.
+
+The exact byte length and SHA-256 of every model package are pinned in the client (see `OfflineModelCatalog.kt`). A download stops early if the server advertises a different size, and a finished archive is installed only after its SHA-256 matches; a mismatching file is deleted and the user is asked to download again. If upstream ever replaces a package under the same URL, it cannot be installed until a new ClassCue release re-verifies and re-pins it.
 
 ## Quick start
 
@@ -139,7 +141,7 @@ An address already ending in `/chat/completions` is left unchanged. Each model k
 | Alerts and answers | Local SQLite history retained until manual deletion |
 | AI API keys | Encrypted local storage protected by Android Keystore |
 | AI requests | Text context sent only to HTTPS services configured by the user |
-| Medium and large models | Downloaded from official `k2-fsa/sherpa-onnx` GitHub Release assets |
+| Medium and large models | Downloaded from official `k2-fsa/sherpa-onnx` GitHub Release assets and checked against pinned SHA-256 values before installation |
 
 Obtain any required consent before recording and follow school policies and applicable laws. Do not use this project during exams or wherever electronic devices are prohibited. Never attach real recordings, classroom transcripts, API keys, or other personal information to a public issue. See [SECURITY.md](SECURITY.md) for security reporting guidance.
 
@@ -177,7 +179,6 @@ See [BUILD_STATUS.md](BUILD_STATUS.md) for the complete scope and known warnings
 - Long-term 16 kHz mono WAV storage uses roughly 110 MiB per hour. Export or delete old recordings from History as needed.
 - Foreground services and a wake lock improve background reliability but cannot bypass force-stop, the microphone privacy switch, or aggressive vendor battery management.
 - Whether MagicOS renders an Android ongoing notification as a Live Capsule is decided by the operating system. ClassCue does not call undocumented vendor APIs.
-- Medium and large model packages are downloaded over HTTPS, but fixed SHA-256 values are not yet enforced by the client. Use only the official upstream URLs configured in the repository.
 - The current UI is Chinese-only, and the build target is `arm64-v8a` only.
 - The watch source still requires Huawei DevEco/Hvigor, a formal HAP signing certificate/Profile, and a real Huawei watch. Those materials are intentionally excluded, so this repository does not claim to contain a submission-ready signed HAP.
 

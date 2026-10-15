@@ -28,4 +28,27 @@ class DownloadResumePolicyTest {
         assertTrue(DownloadResumePolicy.isAlreadyComplete(1_000L, 416, 1_000L))
         assertFalse(DownloadResumePolicy.isAlreadyComplete(999L, 416, 1_000L))
     }
+
+    @Test
+    fun partialFilesAreResumedCompletedOrDiscardedAgainstThePinnedSize() {
+        assertEquals(PartialDownloadAction.RESTART, DownloadResumePolicy.partialAction(0L, 1_000L))
+        assertEquals(PartialDownloadAction.RESUME, DownloadResumePolicy.partialAction(400L, 1_000L))
+        assertEquals(PartialDownloadAction.COMPLETE, DownloadResumePolicy.partialAction(1_000L, 1_000L))
+        assertEquals(PartialDownloadAction.RESTART, DownloadResumePolicy.partialAction(1_001L, 1_000L))
+    }
+
+    @Test
+    fun advertisedTotalPrefersContentRangeAndIgnoresPartialContentLength() {
+        assertEquals(1_000L, DownloadResumePolicy.advertisedTotal(206, 600L, 1_000L))
+        assertEquals(1_000L, DownloadResumePolicy.advertisedTotal(200, 1_000L, -1L))
+        assertEquals(-1L, DownloadResumePolicy.advertisedTotal(206, 600L, -1L))
+        assertEquals(-1L, DownloadResumePolicy.advertisedTotal(200, -1L, -1L))
+    }
+
+    @Test
+    fun serverOfferingADifferentSizeConflictsWithThePin() {
+        assertTrue(DownloadResumePolicy.conflictsWithPinnedSize(1_200L, 1_000L))
+        assertFalse(DownloadResumePolicy.conflictsWithPinnedSize(1_000L, 1_000L))
+        assertFalse("unknown size defers to the post-download digest", DownloadResumePolicy.conflictsWithPinnedSize(-1L, 1_000L))
+    }
 }
