@@ -36,7 +36,7 @@ class ScheduleScreenshotTest {
         semesterStart = LocalDate.of(2026, 9, 7),
         slots = listOf(
             CourseSlot("a", "微观经济学", 1, 8 * 60, 9 * 60 + 40, 1, 16, WeekParity.ALL, "教1-101"),
-            CourseSlot("b", "大学英语（三）基础口译", 1, 10 * 60, 11 * 60 + 40, 3, 16, WeekParity.ODD, "外语楼 305"),
+            CourseSlot("b", "线性代数", 1, 10 * 60, 11 * 60 + 40, 3, 16, WeekParity.ODD, "理科楼 305"),
             CourseSlot("c", "统计学", 3, 14 * 60, 15 * 60 + 40, 1, 18, WeekParity.EVEN, ""),
             CourseSlot("d", "数据库原理", 4, 8 * 60, 9 * 60 + 40, 1, 16, WeekParity.ALL, "实验楼 2-204")
         ),
