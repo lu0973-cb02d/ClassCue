@@ -133,7 +133,7 @@ jobs:
             echo
             echo "## 签名与升级"
             echo
-            echo "- 安装包名为 \`com.classcue.kexing.github\`，是经过 R8 优化、不可调试的公开版；可以和 0.2.7 及更早的测试版（\`com.classcue.kexing.debug\`）同时安装，旧版里的记录导出后再卸载即可。"
+            echo "- 安装包名为 \`com.classcue.kexing.github\`，是经过 R8 优化、不可调试的公开版；可以和此前发布的测试版（\`com.classcue.kexing.debug\`）同时安装，旧版里的记录导出后再卸载即可。"
             if [ "$STABLE_SIGNING" = "true" ]; then
               echo "- 本 APK 使用项目固定的签名证书，证书 SHA-256：\`$(cat dist/SIGNING_CERT_SHA256.txt)\`。之后使用同一证书发布的版本可以直接覆盖升级。"
             else
