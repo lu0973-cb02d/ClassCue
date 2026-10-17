@@ -143,7 +143,7 @@ Use `gradlew.bat` on Windows. If Google Maven is unreliable in mainland China, s
 | `github` | `assembleGithub` | `com.classcue.kexing.github` | The optimized public build used for Releases |
 | `release` | `assembleRelease` | `com.classcue.kexing` | Requires your own signing certificate; see [FORMAL_SIGNING_REQUIRED.md](FORMAL_SIGNING_REQUIRED.md) |
 
-The three build types have different IDs and install side by side. APKs are written to `app/build/outputs/apk/<build type>/`. On every push to `main`, GitHub Actions runs the tests and Lint, builds the `github` variant, and publishes a Release when a matching `release-notes/v<version>.md` exists. Current test and Lint results are in [BUILD_STATUS.md](BUILD_STATUS.md).
+The three build types have different IDs and install side by side. APKs are written to `app/build/outputs/apk/<build type>/`. On every push to `main`, GitHub Actions runs the tests and Lint, builds the `github` variant, and publishes a Release when a matching `release-notes/v<version>.md` exists. Pull requests get the same tests, Lint, and `github` build, without signing secrets and without publishing anything. Current test and Lint results are in [BUILD_STATUS.md](BUILD_STATUS.md).
 
 ## Project structure
 

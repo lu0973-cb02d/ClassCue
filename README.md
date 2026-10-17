@@ -141,7 +141,7 @@ Windows 使用 `gradlew.bat`。中国大陆网络如无法稳定访问 Google Ma
 | `github` | `assembleGithub` | `com.classcue.kexing.github` | 与 Releases 相同的优化公开版 |
 | `release` | `assembleRelease` | `com.classcue.kexing` | 需要你自己的签名证书，见 [FORMAL_SIGNING_REQUIRED.md](FORMAL_SIGNING_REQUIRED.md) |
 
-三种构建包名不同，可以同时安装。APK 输出在 `app/build/outputs/apk/<构建类型>/`。推送到 `main` 后，GitHub Actions 会运行测试和 Lint、构建 `github` 版，并在存在对应 `release-notes/v<版本>.md` 时自动发布 Release。当前测试与 Lint 结果见 [BUILD_STATUS.md](BUILD_STATUS.md)。
+三种构建包名不同，可以同时安装。APK 输出在 `app/build/outputs/apk/<构建类型>/`。推送到 `main` 后，GitHub Actions 会运行测试和 Lint、构建 `github` 版，并在存在对应 `release-notes/v<版本>.md` 时自动发布 Release；Pull Request 会运行同样的测试、Lint 和 `github` 版构建，但不使用签名密钥，也不发布。当前测试与 Lint 结果见 [BUILD_STATUS.md](BUILD_STATUS.md)。
 
 ## 项目结构
 
