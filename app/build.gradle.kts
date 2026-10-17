@@ -136,6 +136,10 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
         jniLibs.pickFirsts += "**/libc++_shared.so"
+        // libsherpa-onnx-jni.so needs nothing but libonnxruntime.so (besides system libraries), and
+        // the Kotlin API loads only libsherpa-onnx-jni. The C and C++ API wrappers that the AAR also
+        // ships are for native callers and would only add dead weight to the APK.
+        jniLibs.excludes += listOf("**/libsherpa-onnx-c-api.so", "**/libsherpa-onnx-cxx-api.so")
     }
 }
 
