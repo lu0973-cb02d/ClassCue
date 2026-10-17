@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
+    <!-- Read by Android 11 and lower only; keep in sync with data_extraction_rules.xml. -->
     <exclude domain="database" path="classcue_history.db" />
+    <exclude domain="database" path="classcue_history.db-wal" />
+    <exclude domain="database" path="classcue_history.db-shm" />
+    <exclude domain="database" path="classcue_history.db-journal" />
     <exclude domain="sharedpref" path="secret_store.xml" />
     <exclude domain="file" path="recordings/" />
     <exclude domain="file" path="offline_models/" />

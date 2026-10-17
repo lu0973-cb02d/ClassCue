@@ -3,6 +3,10 @@
     <cloud-backup>
         <!-- Classroom transcripts, alerts and AI answers never go to cloud backup. -->
         <exclude domain="database" path="classcue_history.db" />
+        <!-- SQLite's write-ahead log and journal hold recent writes and are separate files. -->
+        <exclude domain="database" path="classcue_history.db-wal" />
+        <exclude domain="database" path="classcue_history.db-shm" />
+        <exclude domain="database" path="classcue_history.db-journal" />
         <exclude domain="sharedpref" path="secret_store.xml" />
         <exclude domain="file" path="recordings/" />
         <exclude domain="file" path="offline_models/" />
@@ -10,6 +14,11 @@
         <exclude domain="external" path="recordings/" />
     </cloud-backup>
     <device-transfer>
+        <!-- Nor to a device-to-device transfer: the lesson history stays on the phone it was recorded on. -->
+        <exclude domain="database" path="classcue_history.db" />
+        <exclude domain="database" path="classcue_history.db-wal" />
+        <exclude domain="database" path="classcue_history.db-shm" />
+        <exclude domain="database" path="classcue_history.db-journal" />
         <exclude domain="sharedpref" path="secret_store.xml" />
         <exclude domain="file" path="recordings/" />
         <exclude domain="file" path="offline_models/" />
