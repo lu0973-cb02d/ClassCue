@@ -1,7 +1,7 @@
 # 公开版构建状态
 
-- 版本：`0.2.8 (17)`（包含未单独发布的 `0.2.7`）
-- 整理日期：2026-10-16
+- 版本：`0.2.9 (18)`（`0.2.8` 的维护更新）
+- 整理日期：2026-10-18
 - 应用 ID：`com.classcue.kexing`；GitHub Releases 公开版为 `com.classcue.kexing.github`，Debug 为 `com.classcue.kexing.debug`
 
 ## 当前版本范围
@@ -14,23 +14,24 @@
 - 识别：可选姓名热词（实验，默认关闭；称呼中有模型词表外的字时整体不启用）和省电识别（2 线程）。
 - AI：流式请求与增量显示；对不接受采样参数的服务自动去掉后重试。
 - 模型下载：新增 `hf-mirror.com` 镜像源并互为回退；镜像按文件下载，每个运行文件固定大小与 SHA-256（与官方压缩包解压结果逐字节一致）。
-- 备份：课堂历史数据库排除在云备份和设备迁移之外。
-- 构建：新增 `github` 构建类型（继承 `release` 的 R8 与资源收缩，不可调试），CI 只对它使用固定签名密钥；保留华为 Wear Engine 类。
+- 备份：课堂历史数据库（含 SQLite 的 `-wal`、`-shm`、`-journal` 文件）排除在云备份和设备迁移之外；`0.2.8` 的设备迁移规则漏掉了数据库本身，`0.2.9` 已补上，并由测试检查三处备份规则。
+- 构建：新增 `github` 构建类型（继承 `release` 的 R8 与资源收缩，不可调试），CI 只对它使用固定签名密钥；保留华为 Wear Engine 类。`0.2.9` 起不再打包 sherpa-onnx 的 C/C++ API 原生库（JNI 库只依赖 `libonnxruntime.so`，应用从不加载它们）；Pull Request 会运行测试、Lint 和 `github` 版构建（`pr-check.yml`，不使用签名密钥，不发布）。
 - 华为手表链路与 `0.2.6` 相同；手表只与正式包名配对。
 
 ## 当前校验
 
-- Android/JVM 单元测试：104 项通过，0 失败（含 Robolectric 下的模型下载、镜像回退、断点续传测试，以及课表、历史数据库、录音修复、压缩判定、姓名读音、提醒打分、流式协议等测试）。
-- Android Lint：0 个错误、34 个警告、1 个提示。新增警告主要是 `SharedPreferences.edit` 等 KTX 写法建议（共 17 处 `UseKtx`）和依赖版本更新提示；`StaticFieldLeak` 指向的仓库持有的是 Application 上下文。
-- `github` APK：`com.classcue.kexing.github`、`0.2.8 (17)`、`arm64-v8a`、不可调试，约 85 MiB（Debug 约 143 MiB）。
+- Android/JVM 单元测试：107 项通过，0 失败（含 Robolectric 下的模型下载、镜像回退、断点续传测试，以及课表、历史数据库、录音修复、压缩判定、姓名读音、提醒打分、流式协议、备份规则等测试）。
+- Android Lint：0 个错误、34 个警告、1 个提示，与 `0.2.8` 相同。警告主要是 `SharedPreferences.edit` 等 KTX 写法建议（共 17 处 `UseKtx`）和依赖版本更新提示；`StaticFieldLeak` 指向的仓库持有的是 Application 上下文。
+- `github` APK：`com.classcue.kexing.github`、`0.2.9 (18)`、`arm64-v8a`、不可调试，约 81 MiB（`0.2.8` 为 85.45 MiB，差值正是不再打包的两个原生库）。
 - 截图测试（`-Pscreenshots`）覆盖课表页、课程确认框、历史记录搜索和课次详情页。
-- GitHub Actions 工作流已用 actionlint 和 shellcheck 检查。
+- GitHub Actions：`build-apk.yml` 已用 actionlint 和 shellcheck 检查；新增的 `pr-check.yml` 已用 actionlint 检查。
 
 ## 尚未在真机验证
 
 - MediaCodec AAC 压缩与时长核对；如有异常可在设置中关闭“课后压缩录音”，WAV 原件默认始终保留。
 - 上课提醒在各厂商省电策略下的到达时间（非精确闹钟，允许约 10 分钟窗口）。
 - 流式 AI 回答与各兼容服务的实际交互。
+- 移除 `libsherpa-onnx-c-api.so` 和 `libsherpa-onnx-cxx-api.so` 后的中/大档识别：APK 内剩余原生库的依赖用 `readelf` 检查都能解析，也没有库按名字引用被移除的两个，但没有在真机上运行。
 
 ## 小档识别器评估
 
